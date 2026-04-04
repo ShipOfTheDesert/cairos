@@ -17,10 +17,15 @@
 
 (package
  (name cairos)
- (synopsis "A short synopsis")
- (description "A longer description")
- (depends ocaml)
- (tags
-  ("add topics" "to describe" your project)))
-
-; See the complete stanza docs at https://dune.readthedocs.io/en/stable/reference/dune-project/index.html
+ (synopsis "Typed time-series library for OCaml")
+ (description
+  "Frequency-aware, indexed time-series with financial operations for quantitative analysis")
+ (depends
+  (fmt
+   (and
+    (>= 0.11.0)
+    :with-test))
+  ocaml
+  ptime
+  nx
+  (alcotest :with-test)))
