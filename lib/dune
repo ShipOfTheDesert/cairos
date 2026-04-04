@@ -1,2 +1,4 @@
 (library
- (name cairos))
+ (name cairos)
+ (modules freq index series)
+ (libraries ptime nx))
