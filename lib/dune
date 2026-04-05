@@ -1,4 +1,4 @@
 (library
  (name cairos)
- (modules freq index series)
+ (modules freq index series align)
  (libraries ptime nx))

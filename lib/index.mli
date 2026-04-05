@@ -48,6 +48,15 @@ val timestamps : 'freq t -> Ptime.t array
 (** Raw timestamp array. Returned by copy — mutations do not affect the index.
 *)
 
+(** {1 Internal constructors}
+
+    These are library-internal. Do not use outside the [cairos] library. *)
+
+val of_ptime_array_unsafe : 'freq Freq.t -> Ptime.t array -> 'freq t
+(** [of_ptime_array_unsafe freq timestamps] constructs an index without
+    validating monotonicity. Only safe when timestamps are extracted from valid
+    {!t} values and the extraction preserves sorted order. *)
+
 (** {1 Slicing} *)
 
 val slice : start:int -> stop:int -> 'freq t -> 'freq t

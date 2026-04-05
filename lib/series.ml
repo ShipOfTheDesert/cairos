@@ -9,6 +9,7 @@ let make index values =
       (Printf.sprintf "index length %d does not match values length %d" idx_len
          val_len)
 
+let make_unsafe index values = { index; values }
 let index t = t.index
 let values t = t.values
 let length t = Index.length t.index
