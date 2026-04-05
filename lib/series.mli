@@ -10,6 +10,15 @@ val make :
 (** Construct a series from index and values. Returns [Error msg] if
     [Index.length index <> (Nx.shape values).(0)]. *)
 
+(** {1 Internal constructors}
+
+    These are library-internal. Do not use outside the [cairos] library. *)
+
+val make_unsafe : 'freq Index.t -> ('v, 'b) Nx.t -> ('freq, ('v, 'b) Nx.t) t
+(** [make_unsafe index values] constructs a series without checking length
+    equality. Only safe when the length invariant is guaranteed by the call site
+    (e.g. {!Align.map2} where aligned arrays match by construction). *)
+
 (** {1 Accessors} *)
 
 val index : ('freq, 'v) t -> 'freq Index.t

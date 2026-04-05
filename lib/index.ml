@@ -77,6 +77,7 @@ let of_unix_floats freq floats =
 let length t = Array.length t.timestamps
 let freq t = t.freq
 let timestamps t = Array.copy t.timestamps
+let of_ptime_array_unsafe freq timestamps = { freq; timestamps }
 
 let slice ~start ~stop t =
   let len = Array.length t.timestamps in
