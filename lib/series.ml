@@ -22,3 +22,51 @@ let slice ~start ~stop t =
   { index; values }
 
 let map f t = { index = t.index; values = f t.values }
+
+let shift n t =
+  let len = length t in
+  if n = 0 then { index = t.index; values = Nx.copy t.values }
+  else
+    let dst = Nx.full_like t.values Float.nan in
+    let abs_n = abs n in
+    if abs_n < len then
+      if n > 0 then
+        Nx.set_slice [ R (n, len) ] dst (Nx.slice [ R (0, len - n) ] t.values)
+      else
+        Nx.set_slice
+          [ R (0, len - abs_n) ]
+          dst
+          (Nx.slice [ R (abs_n, len) ] t.values);
+    { index = t.index; values = dst }
+
+let pct_change t =
+  let prev = shift 1 t in
+  let diff = Nx.sub t.values prev.values in
+  let result = Nx.div diff prev.values in
+  { index = t.index; values = result }
+
+let ffill t =
+  let arr = Nx.to_array t.values in
+  let len = Array.length arr in
+  let out = Array.copy arr in
+  let last = ref Float.nan in
+  for i = 0 to len - 1 do
+    if Float.is_nan out.(i) then (
+      if not (Float.is_nan !last) then out.(i) <- !last)
+    else last := out.(i)
+  done;
+  let values = Nx.create (Nx.dtype t.values) [| len |] out in
+  { index = t.index; values }
+
+let bfill t =
+  let arr = Nx.to_array t.values in
+  let len = Array.length arr in
+  let out = Array.copy arr in
+  let next = ref Float.nan in
+  for i = len - 1 downto 0 do
+    if Float.is_nan out.(i) then (
+      if not (Float.is_nan !next) then out.(i) <- !next)
+    else next := out.(i)
+  done;
+  let values = Nx.create (Nx.dtype t.values) [| len |] out in
+  { index = t.index; values }
