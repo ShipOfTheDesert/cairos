@@ -86,18 +86,9 @@ let slice_empty_range_produces_empty_series () =
           let reversed = Cairos.Series.slice ~start:2 ~stop:1 s in
           Alcotest.(check int) "start > stop" 0 (Cairos.Series.length reversed))
 
-let make_daily_series dates values =
-  match Cairos.Index.daily dates with
-  | Error e -> Alcotest.fail e
-  | Ok idx -> (
-      let vals = Nx.create Nx.float64 [| Array.length values |] values in
-      match Cairos.Series.make idx vals with
-      | Error e -> Alcotest.fail e
-      | Ok s -> s)
-
 let shift_positive_lags_values () =
   let s =
-    make_daily_series
+    Test_helpers.make_daily_series
       [| "2024-01-01"; "2024-01-02"; "2024-01-03"; "2024-01-04"; "2024-01-05" |]
       [| 10.0; 20.0; 30.0; 40.0; 50.0 |]
   in
@@ -111,7 +102,7 @@ let shift_positive_lags_values () =
 
 let shift_negative_leads_values () =
   let s =
-    make_daily_series
+    Test_helpers.make_daily_series
       [| "2024-01-01"; "2024-01-02"; "2024-01-03"; "2024-01-04"; "2024-01-05" |]
       [| 10.0; 20.0; 30.0; 40.0; 50.0 |]
   in
@@ -125,7 +116,7 @@ let shift_negative_leads_values () =
 
 let shift_zero_preserves_values () =
   let s =
-    make_daily_series
+    Test_helpers.make_daily_series
       [| "2024-01-01"; "2024-01-02"; "2024-01-03" |]
       [| 10.0; 20.0; 30.0 |]
   in
@@ -137,7 +128,7 @@ let shift_zero_preserves_values () =
 
 let shift_by_length_produces_all_nan () =
   let s =
-    make_daily_series
+    Test_helpers.make_daily_series
       [| "2024-01-01"; "2024-01-02"; "2024-01-03"; "2024-01-04"; "2024-01-05" |]
       [| 10.0; 20.0; 30.0; 40.0; 50.0 |]
   in
@@ -147,13 +138,13 @@ let shift_by_length_produces_all_nan () =
   Array.iter (fun v -> Alcotest.(check bool) "is nan" true (Float.is_nan v)) vs
 
 let shift_empty_series () =
-  let s = make_daily_series [||] [||] in
+  let s = Test_helpers.make_daily_series [||] [||] in
   let shifted = Cairos.Series.shift 3 s in
   Alcotest.(check int) "length is 0" 0 (Cairos.Series.length shifted)
 
 let pct_change_computes_returns () =
   let s =
-    make_daily_series
+    Test_helpers.make_daily_series
       [| "2024-01-01"; "2024-01-02"; "2024-01-03" |]
       [| 100.0; 110.0; 99.0 |]
   in
@@ -165,7 +156,7 @@ let pct_change_computes_returns () =
 
 let pct_change_zero_denominator () =
   let s =
-    make_daily_series
+    Test_helpers.make_daily_series
       [| "2024-01-01"; "2024-01-02"; "2024-01-03" |]
       [| 0.0; 5.0; 0.0 |]
   in
@@ -179,7 +170,7 @@ let pct_change_zero_denominator () =
 
 let ffill_fills_interior_nans () =
   let s =
-    make_daily_series
+    Test_helpers.make_daily_series
       [|
         "2024-01-01";
         "2024-01-02";
@@ -201,7 +192,7 @@ let ffill_fills_interior_nans () =
 
 let ffill_preserves_leading_nans () =
   let s =
-    make_daily_series
+    Test_helpers.make_daily_series
       [| "2024-01-01"; "2024-01-02"; "2024-01-03"; "2024-01-04" |]
       [| Float.nan; Float.nan; 5.0; Float.nan |]
   in
@@ -214,7 +205,7 @@ let ffill_preserves_leading_nans () =
 
 let bfill_fills_interior_nans () =
   let s =
-    make_daily_series
+    Test_helpers.make_daily_series
       [|
         "2024-01-01";
         "2024-01-02";
@@ -236,7 +227,7 @@ let bfill_fills_interior_nans () =
 
 let bfill_preserves_trailing_nans () =
   let s =
-    make_daily_series
+    Test_helpers.make_daily_series
       [| "2024-01-01"; "2024-01-02"; "2024-01-03"; "2024-01-04" |]
       [| Float.nan; 5.0; Float.nan; Float.nan |]
   in
@@ -249,7 +240,7 @@ let bfill_preserves_trailing_nans () =
 
 let ffill_no_nans_identity () =
   let s =
-    make_daily_series
+    Test_helpers.make_daily_series
       [| "2024-01-01"; "2024-01-02"; "2024-01-03" |]
       [| 1.0; 2.0; 3.0 |]
   in
@@ -260,13 +251,13 @@ let ffill_no_nans_identity () =
   Alcotest.(check (float 0.001)) "pos 2" 3.0 vs.(2)
 
 let ffill_empty_series () =
-  let s = make_daily_series [||] [||] in
+  let s = Test_helpers.make_daily_series [||] [||] in
   let result = Cairos.Series.ffill s in
   Alcotest.(check int) "length is 0" 0 (Cairos.Series.length result)
 
 let bfill_no_nans_identity () =
   let s =
-    make_daily_series
+    Test_helpers.make_daily_series
       [| "2024-01-01"; "2024-01-02"; "2024-01-03" |]
       [| 1.0; 2.0; 3.0 |]
   in
@@ -277,13 +268,13 @@ let bfill_no_nans_identity () =
   Alcotest.(check (float 0.001)) "pos 2" 3.0 vs.(2)
 
 let bfill_empty_series () =
-  let s = make_daily_series [||] [||] in
+  let s = Test_helpers.make_daily_series [||] [||] in
   let result = Cairos.Series.bfill s in
   Alcotest.(check int) "length is 0" 0 (Cairos.Series.length result)
 
 let pct_change_all_nan_input () =
   let s =
-    make_daily_series
+    Test_helpers.make_daily_series
       [| "2024-01-01"; "2024-01-02"; "2024-01-03" |]
       [| Float.nan; Float.nan; Float.nan |]
   in

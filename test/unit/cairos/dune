@@ -1,3 +1,10 @@
 (test
  (name test_runner)
+ (modules
+  test_runner
+  test_helpers
+  test_index
+  test_series
+  test_align
+  test_window)
  (libraries cairos nx ptime fmt alcotest))

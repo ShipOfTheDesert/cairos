@@ -1,23 +1,14 @@
-let make_daily_series dates values =
-  match Cairos.Index.daily dates with
-  | Error e -> Alcotest.fail e
-  | Ok idx -> (
-      let vals = Nx.create Nx.float64 [| Array.length values |] values in
-      match Cairos.Series.make idx vals with
-      | Error e -> Alcotest.fail e
-      | Ok s -> s)
-
 (* --- Inner strategy --- *)
 
 let inner_overlapping_series () =
   (* Left: Jan 1-5, Right: Jan 3-7 -> overlap on Jan 3,4,5 *)
   let left =
-    make_daily_series
+    Test_helpers.make_daily_series
       [| "2024-01-01"; "2024-01-02"; "2024-01-03"; "2024-01-04"; "2024-01-05" |]
       [| 1.0; 2.0; 3.0; 4.0; 5.0 |]
   in
   let right =
-    make_daily_series
+    Test_helpers.make_daily_series
       [| "2024-01-03"; "2024-01-04"; "2024-01-05"; "2024-01-06"; "2024-01-07" |]
       [| 30.0; 40.0; 50.0; 60.0; 70.0 |]
   in
@@ -37,10 +28,14 @@ let inner_overlapping_series () =
 
 let inner_disjoint_series () =
   let left =
-    make_daily_series [| "2024-01-01"; "2024-01-02" |] [| 1.0; 2.0 |]
+    Test_helpers.make_daily_series
+      [| "2024-01-01"; "2024-01-02" |]
+      [| 1.0; 2.0 |]
   in
   let right =
-    make_daily_series [| "2024-01-03"; "2024-01-04" |] [| 3.0; 4.0 |]
+    Test_helpers.make_daily_series
+      [| "2024-01-03"; "2024-01-04" |]
+      [| 3.0; 4.0 |]
   in
   match Cairos.Align.align ~strategy:`Inner left right with
   | Ok _ -> Alcotest.fail "expected Error for disjoint series"
@@ -49,12 +44,12 @@ let inner_disjoint_series () =
 let inner_subset_series () =
   (* Left is a subset of right *)
   let left =
-    make_daily_series
+    Test_helpers.make_daily_series
       [| "2024-01-02"; "2024-01-03"; "2024-01-04" |]
       [| 20.0; 30.0; 40.0 |]
   in
   let right =
-    make_daily_series
+    Test_helpers.make_daily_series
       [| "2024-01-01"; "2024-01-02"; "2024-01-03"; "2024-01-04"; "2024-01-05" |]
       [| 100.0; 200.0; 300.0; 400.0; 500.0 |]
   in
@@ -74,10 +69,14 @@ let inner_subset_series () =
 
 let inner_single_common_timestamp () =
   let left =
-    make_daily_series [| "2024-01-01"; "2024-01-03" |] [| 1.0; 3.0 |]
+    Test_helpers.make_daily_series
+      [| "2024-01-01"; "2024-01-03" |]
+      [| 1.0; 3.0 |]
   in
   let right =
-    make_daily_series [| "2024-01-02"; "2024-01-03" |] [| 20.0; 30.0 |]
+    Test_helpers.make_daily_series
+      [| "2024-01-02"; "2024-01-03" |]
+      [| 20.0; 30.0 |]
   in
   match Cairos.Align.align ~strategy:`Inner left right with
   | Error e -> Alcotest.fail e
@@ -94,12 +93,14 @@ let inner_single_common_timestamp () =
 let left_fills_missing_with_nan () =
   (* Left: Jan 1-4, Right: Jan 1,3 -> positions 1,3 missing in right *)
   let left =
-    make_daily_series
+    Test_helpers.make_daily_series
       [| "2024-01-01"; "2024-01-02"; "2024-01-03"; "2024-01-04" |]
       [| 1.0; 2.0; 3.0; 4.0 |]
   in
   let right =
-    make_daily_series [| "2024-01-01"; "2024-01-03" |] [| 100.0; 300.0 |]
+    Test_helpers.make_daily_series
+      [| "2024-01-01"; "2024-01-03" |]
+      [| 100.0; 300.0 |]
   in
   match Cairos.Align.align ~strategy:`Left left right with
   | Error e -> Alcotest.fail e
@@ -119,12 +120,12 @@ let left_fills_missing_with_nan () =
 
 let left_full_overlap () =
   let left =
-    make_daily_series
+    Test_helpers.make_daily_series
       [| "2024-01-01"; "2024-01-02"; "2024-01-03" |]
       [| 1.0; 2.0; 3.0 |]
   in
   let right =
-    make_daily_series
+    Test_helpers.make_daily_series
       [| "2024-01-01"; "2024-01-02"; "2024-01-03" |]
       [| 10.0; 20.0; 30.0 |]
   in
@@ -138,10 +139,14 @@ let left_full_overlap () =
 
 let left_no_overlap () =
   let left =
-    make_daily_series [| "2024-01-01"; "2024-01-02" |] [| 1.0; 2.0 |]
+    Test_helpers.make_daily_series
+      [| "2024-01-01"; "2024-01-02" |]
+      [| 1.0; 2.0 |]
   in
   let right =
-    make_daily_series [| "2024-01-03"; "2024-01-04" |] [| 30.0; 40.0 |]
+    Test_helpers.make_daily_series
+      [| "2024-01-03"; "2024-01-04" |]
+      [| 30.0; 40.0 |]
   in
   match Cairos.Align.align ~strategy:`Left left right with
   | Error e -> Alcotest.fail e
@@ -157,12 +162,12 @@ let left_no_overlap () =
 
 let asof_backward_exact_match () =
   let left =
-    make_daily_series
+    Test_helpers.make_daily_series
       [| "2024-01-01"; "2024-01-02"; "2024-01-03" |]
       [| 1.0; 2.0; 3.0 |]
   in
   let right =
-    make_daily_series
+    Test_helpers.make_daily_series
       [| "2024-01-01"; "2024-01-02"; "2024-01-03" |]
       [| 10.0; 20.0; 30.0 |]
   in
@@ -177,12 +182,14 @@ let asof_backward_exact_match () =
 let asof_backward_uses_previous () =
   (* Left: Jan 1,3,5. Right: Jan 2,4. Backward: Jan 1->nan, Jan 3->Jan 2, Jan 5->Jan 4 *)
   let left =
-    make_daily_series
+    Test_helpers.make_daily_series
       [| "2024-01-01"; "2024-01-03"; "2024-01-05" |]
       [| 1.0; 3.0; 5.0 |]
   in
   let right =
-    make_daily_series [| "2024-01-02"; "2024-01-04" |] [| 20.0; 40.0 |]
+    Test_helpers.make_daily_series
+      [| "2024-01-02"; "2024-01-04" |]
+      [| 20.0; 40.0 |]
   in
   match Cairos.Align.align ~strategy:(`Asof `Backward) left right with
   | Error e -> Alcotest.fail e
@@ -194,9 +201,11 @@ let asof_backward_uses_previous () =
 
 let asof_backward_no_prior () =
   (* Left: Jan 1. Right: Jan 2,3. Backward: Jan 1 has no right <= it -> nan *)
-  let left = make_daily_series [| "2024-01-01" |] [| 1.0 |] in
+  let left = Test_helpers.make_daily_series [| "2024-01-01" |] [| 1.0 |] in
   let right =
-    make_daily_series [| "2024-01-02"; "2024-01-03" |] [| 20.0; 30.0 |]
+    Test_helpers.make_daily_series
+      [| "2024-01-02"; "2024-01-03" |]
+      [| 20.0; 30.0 |]
   in
   match Cairos.Align.align ~strategy:(`Asof `Backward) left right with
   | Error e -> Alcotest.fail e
@@ -208,12 +217,12 @@ let asof_backward_no_prior () =
 
 let asof_forward_exact_match () =
   let left =
-    make_daily_series
+    Test_helpers.make_daily_series
       [| "2024-01-01"; "2024-01-02"; "2024-01-03" |]
       [| 1.0; 2.0; 3.0 |]
   in
   let right =
-    make_daily_series
+    Test_helpers.make_daily_series
       [| "2024-01-01"; "2024-01-02"; "2024-01-03" |]
       [| 10.0; 20.0; 30.0 |]
   in
@@ -228,12 +237,14 @@ let asof_forward_exact_match () =
 let asof_forward_uses_next () =
   (* Left: Jan 1,3,5. Right: Jan 2,4. Forward: Jan 1->Jan 2, Jan 3->Jan 4, Jan 5->nan *)
   let left =
-    make_daily_series
+    Test_helpers.make_daily_series
       [| "2024-01-01"; "2024-01-03"; "2024-01-05" |]
       [| 1.0; 3.0; 5.0 |]
   in
   let right =
-    make_daily_series [| "2024-01-02"; "2024-01-04" |] [| 20.0; 40.0 |]
+    Test_helpers.make_daily_series
+      [| "2024-01-02"; "2024-01-04" |]
+      [| 20.0; 40.0 |]
   in
   match Cairos.Align.align ~strategy:(`Asof `Forward) left right with
   | Error e -> Alcotest.fail e
@@ -245,9 +256,11 @@ let asof_forward_uses_next () =
 
 let asof_forward_no_subsequent () =
   (* Left: Jan 3. Right: Jan 1,2. Forward: Jan 3 has no right >= it -> nan *)
-  let left = make_daily_series [| "2024-01-03" |] [| 3.0 |] in
+  let left = Test_helpers.make_daily_series [| "2024-01-03" |] [| 3.0 |] in
   let right =
-    make_daily_series [| "2024-01-01"; "2024-01-02" |] [| 10.0; 20.0 |]
+    Test_helpers.make_daily_series
+      [| "2024-01-01"; "2024-01-02" |]
+      [| 10.0; 20.0 |]
   in
   match Cairos.Align.align ~strategy:(`Asof `Forward) left right with
   | Error e -> Alcotest.fail e
@@ -259,12 +272,12 @@ let asof_forward_no_subsequent () =
 
 let map2_adds_aligned_values () =
   let left =
-    make_daily_series
+    Test_helpers.make_daily_series
       [| "2024-01-01"; "2024-01-02"; "2024-01-03" |]
       [| 1.0; 2.0; 3.0 |]
   in
   let right =
-    make_daily_series
+    Test_helpers.make_daily_series
       [| "2024-01-01"; "2024-01-02"; "2024-01-03" |]
       [| 10.0; 20.0; 30.0 |]
   in
@@ -283,12 +296,14 @@ let map2_adds_aligned_values () =
 let map2_propagates_nan () =
   (* Left join with missing right -> NaN positions propagate through map2 *)
   let left =
-    make_daily_series
+    Test_helpers.make_daily_series
       [| "2024-01-01"; "2024-01-02"; "2024-01-03" |]
       [| 1.0; 2.0; 3.0 |]
   in
   let right =
-    make_daily_series [| "2024-01-01"; "2024-01-03" |] [| 10.0; 30.0 |]
+    Test_helpers.make_daily_series
+      [| "2024-01-01"; "2024-01-03" |]
+      [| 10.0; 30.0 |]
   in
   match Cairos.Align.align ~strategy:`Left left right with
   | Error e -> Alcotest.fail e
@@ -302,18 +317,22 @@ let map2_propagates_nan () =
 (* --- Edge cases --- *)
 
 let inner_empty_left_returns_error () =
-  let left = make_daily_series [||] [||] in
+  let left = Test_helpers.make_daily_series [||] [||] in
   let right =
-    make_daily_series [| "2024-01-01"; "2024-01-02" |] [| 10.0; 20.0 |]
+    Test_helpers.make_daily_series
+      [| "2024-01-01"; "2024-01-02" |]
+      [| 10.0; 20.0 |]
   in
   match Cairos.Align.align ~strategy:`Inner left right with
   | Ok _ -> Alcotest.fail "expected Error for empty left with Inner"
   | Error _ -> ()
 
 let left_empty_left_returns_ok () =
-  let left = make_daily_series [||] [||] in
+  let left = Test_helpers.make_daily_series [||] [||] in
   let right =
-    make_daily_series [| "2024-01-01"; "2024-01-02" |] [| 10.0; 20.0 |]
+    Test_helpers.make_daily_series
+      [| "2024-01-01"; "2024-01-02" |]
+      [| 10.0; 20.0 |]
   in
   match Cairos.Align.align ~strategy:`Left left right with
   | Error e -> Alcotest.fail ("expected Ok for empty left with Left, got: " ^ e)
@@ -323,9 +342,11 @@ let left_empty_left_returns_ok () =
         (Cairos.Index.length (Cairos.Align.index aligned))
 
 let asof_empty_left_returns_ok () =
-  let left = make_daily_series [||] [||] in
+  let left = Test_helpers.make_daily_series [||] [||] in
   let right =
-    make_daily_series [| "2024-01-01"; "2024-01-02" |] [| 10.0; 20.0 |]
+    Test_helpers.make_daily_series
+      [| "2024-01-01"; "2024-01-02" |]
+      [| 10.0; 20.0 |]
   in
   match Cairos.Align.align ~strategy:(`Asof `Backward) left right with
   | Error e -> Alcotest.fail ("expected Ok for empty left with Asof, got: " ^ e)
@@ -336,9 +357,11 @@ let asof_empty_left_returns_ok () =
 
 let left_empty_right_all_nan () =
   let left =
-    make_daily_series [| "2024-01-01"; "2024-01-02" |] [| 1.0; 2.0 |]
+    Test_helpers.make_daily_series
+      [| "2024-01-01"; "2024-01-02" |]
+      [| 1.0; 2.0 |]
   in
-  let right = make_daily_series [||] [||] in
+  let right = Test_helpers.make_daily_series [||] [||] in
   match Cairos.Align.align ~strategy:`Left left right with
   | Error e -> Alcotest.fail ("expected Ok for empty right with Left, got: " ^ e)
   | Ok aligned ->
@@ -348,9 +371,11 @@ let left_empty_right_all_nan () =
 
 let asof_forward_empty_right_all_nan () =
   let left =
-    make_daily_series [| "2024-01-01"; "2024-01-02" |] [| 1.0; 2.0 |]
+    Test_helpers.make_daily_series
+      [| "2024-01-01"; "2024-01-02" |]
+      [| 1.0; 2.0 |]
   in
-  let right = make_daily_series [||] [||] in
+  let right = Test_helpers.make_daily_series [||] [||] in
   match Cairos.Align.align ~strategy:(`Asof `Forward) left right with
   | Error e -> Alcotest.fail ("expected Ok for empty right with Asof, got: " ^ e)
   | Ok aligned ->
@@ -360,24 +385,73 @@ let asof_forward_empty_right_all_nan () =
 
 let inner_empty_right_returns_error () =
   let left =
-    make_daily_series [| "2024-01-01"; "2024-01-02" |] [| 1.0; 2.0 |]
+    Test_helpers.make_daily_series
+      [| "2024-01-01"; "2024-01-02" |]
+      [| 1.0; 2.0 |]
   in
-  let right = make_daily_series [||] [||] in
+  let right = Test_helpers.make_daily_series [||] [||] in
   match Cairos.Align.align ~strategy:`Inner left right with
   | Ok _ -> Alcotest.fail "expected Error for empty right with Inner"
   | Error _ -> ()
 
 let asof_backward_empty_right_all_nan () =
   let left =
-    make_daily_series [| "2024-01-01"; "2024-01-02" |] [| 1.0; 2.0 |]
+    Test_helpers.make_daily_series
+      [| "2024-01-01"; "2024-01-02" |]
+      [| 1.0; 2.0 |]
   in
-  let right = make_daily_series [||] [||] in
+  let right = Test_helpers.make_daily_series [||] [||] in
   match Cairos.Align.align ~strategy:(`Asof `Backward) left right with
   | Error e -> Alcotest.fail ("expected Ok for empty right with Asof, got: " ^ e)
   | Ok aligned ->
       let rv = Nx.to_array (Cairos.Align.right aligned) in
       Alcotest.(check bool) "right 0 is nan" true (Float.is_nan rv.(0));
       Alcotest.(check bool) "right 1 is nan" true (Float.is_nan rv.(1))
+
+let map2_with_asof_backward () =
+  let left =
+    Test_helpers.make_daily_series
+      [| "2024-01-01"; "2024-01-03"; "2024-01-05" |]
+      [| 1.0; 3.0; 5.0 |]
+  in
+  let right =
+    Test_helpers.make_daily_series
+      [| "2024-01-02"; "2024-01-04" |]
+      [| 20.0; 40.0 |]
+  in
+  match Cairos.Align.align ~strategy:(`Asof `Backward) left right with
+  | Error e -> Alcotest.fail e
+  | Ok aligned ->
+      let result = Cairos.Align.map2 ( +. ) aligned in
+      let vs = Nx.to_array (Cairos.Series.values result) in
+      Alcotest.(check bool) "sum 0 is nan" true (Float.is_nan vs.(0));
+      Alcotest.(check (float 0.001)) "sum 1" 23.0 vs.(1);
+      Alcotest.(check (float 0.001)) "sum 2" 45.0 vs.(2)
+
+let inner_identical_timestamps () =
+  let left =
+    Test_helpers.make_daily_series
+      [| "2024-01-01"; "2024-01-02"; "2024-01-03" |]
+      [| 1.0; 2.0; 3.0 |]
+  in
+  let right =
+    Test_helpers.make_daily_series
+      [| "2024-01-01"; "2024-01-02"; "2024-01-03" |]
+      [| 10.0; 20.0; 30.0 |]
+  in
+  match Cairos.Align.align ~strategy:`Inner left right with
+  | Error e -> Alcotest.fail e
+  | Ok aligned ->
+      let idx = Cairos.Align.index aligned in
+      Alcotest.(check int) "aligned length" 3 (Cairos.Index.length idx);
+      let lv = Nx.to_array (Cairos.Align.left aligned) in
+      Alcotest.(check (float 0.001)) "left 0" 1.0 lv.(0);
+      Alcotest.(check (float 0.001)) "left 1" 2.0 lv.(1);
+      Alcotest.(check (float 0.001)) "left 2" 3.0 lv.(2);
+      let rv = Nx.to_array (Cairos.Align.right aligned) in
+      Alcotest.(check (float 0.001)) "right 0" 10.0 rv.(0);
+      Alcotest.(check (float 0.001)) "right 1" 20.0 rv.(1);
+      Alcotest.(check (float 0.001)) "right 2" 30.0 rv.(2)
 
 let tests =
   [
@@ -407,4 +481,6 @@ let tests =
     ( "asof_backward_empty_right_all_nan",
       `Quick,
       asof_backward_empty_right_all_nan );
+    ("map2_with_asof_backward", `Quick, map2_with_asof_backward);
+    ("inner_identical_timestamps", `Quick, inner_identical_timestamps);
   ]
