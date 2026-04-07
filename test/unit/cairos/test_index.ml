@@ -199,3 +199,5 @@ let tests =
       `Quick,
       of_unix_floats_rejects_non_monotonic );
   ]
+
+let () = Alcotest.run "Index" [ ("Index", tests) ]

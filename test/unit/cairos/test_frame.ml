@@ -146,3 +146,5 @@ let tests =
       `Quick,
       columns_preserves_insertion_order );
   ]
+
+let () = Alcotest.run "Frame" [ ("Frame", tests) ]
