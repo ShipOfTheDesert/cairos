@@ -6,5 +6,7 @@
   test_index
   test_series
   test_align
-  test_window)
+  test_window
+  test_resample
+  test_frame)
  (libraries cairos nx ptime fmt alcotest))

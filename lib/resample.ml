@@ -7,8 +7,8 @@ let freq_rank : type a. a Freq.t -> int = function
 let freq_name : type a. a Freq.t -> string = function
   | Freq.Minute -> "Minute"
   | Freq.Hour -> "Hour"
-  | Freq.Day -> "Daily"
-  | Freq.Week -> "Weekly"
+  | Freq.Day -> "Day"
+  | Freq.Week -> "Week"
 
 (* A bucket key identifies the calendar period a timestamp belongs to.
    Decomposition from Ptime.t is total (Ptime.to_date_time never fails).
@@ -33,6 +33,8 @@ let bucket_key_of_ptime : type a.
  fun freq t ->
   match freq with
   | Freq.Minute ->
+      (* Unreachable: Minute cannot be a target frequency (rank 0, nothing
+         lower). Included for GADT exhaustiveness. *)
       let (year, month, day), ((hour, _mm, _ss), _tz) = Ptime.to_date_time t in
       Ok { year; month; day; hour }
   | Freq.Hour ->

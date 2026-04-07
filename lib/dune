@@ -1,4 +1,4 @@
 (library
  (name cairos)
- (modules freq index series align window)
+ (modules freq index series align window resample frame)
  (libraries ptime nx))
