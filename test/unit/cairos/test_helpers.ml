@@ -37,13 +37,11 @@ let make_weekly_series dates values =
 let frame_get_exn name frame =
   match Cairos.Frame.get name frame with
   | Some s -> s
-  | None ->
-      Alcotest.fail (Printf.sprintf "missing column '%s'" name)
+  | None -> Alcotest.fail (Printf.sprintf "missing column '%s'" name)
 
 let assoc_exn name lst =
   match List.assoc_opt name lst with
   | Some v -> v
-  | None ->
-      Alcotest.fail (Printf.sprintf "missing key '%s'" name)
+  | None -> Alcotest.fail (Printf.sprintf "missing key '%s'" name)
 
 let ptime_testable = Alcotest.testable (Ptime.pp_rfc3339 ()) Ptime.equal

@@ -256,12 +256,8 @@ let describe_computes_stats_for_each_column () =
   | Error e -> Alcotest.fail e
   | Ok frame ->
       let stats = Cairos.Frame.describe frame in
-      let sa =
-Test_helpers.assoc_exn "a" stats
-      in
-      let sb =
-Test_helpers.assoc_exn "b" stats
-      in
+      let sa = Test_helpers.assoc_exn "a" stats in
+      let sb = Test_helpers.assoc_exn "b" stats in
       Alcotest.(check int) "a count" 5 sa.count;
       Alcotest.(check (float 0.001)) "a mean" 3.0 sa.mean;
       Alcotest.(check (float 0.001)) "a std" (Float.sqrt 2.0) sa.std;
@@ -288,9 +284,7 @@ let describe_excludes_nan_from_stats () =
   | Error e -> Alcotest.fail e
   | Ok frame ->
       let stats = Cairos.Frame.describe frame in
-      let sx =
-Test_helpers.assoc_exn "x" stats
-      in
+      let sx = Test_helpers.assoc_exn "x" stats in
       Alcotest.(check int) "count" 3 sx.count;
       Alcotest.(check (float 0.001)) "mean" 3.0 sx.mean;
       Alcotest.(check (float 0.001)) "min" 1.0 sx.min;
@@ -304,9 +298,7 @@ let describe_all_nan_column () =
   | Error e -> Alcotest.fail e
   | Ok frame ->
       let stats = Cairos.Frame.describe frame in
-      let sx =
-Test_helpers.assoc_exn "x" stats
-      in
+      let sx = Test_helpers.assoc_exn "x" stats in
       Alcotest.(check int) "count" 0 sx.count;
       Alcotest.(check bool) "mean is nan" true (Float.is_nan sx.mean);
       Alcotest.(check bool) "std is nan" true (Float.is_nan sx.std);
@@ -334,9 +326,7 @@ let describe_single_value_column () =
   | Error e -> Alcotest.fail e
   | Ok frame ->
       let stats = Cairos.Frame.describe frame in
-      let sx =
-Test_helpers.assoc_exn "x" stats
-      in
+      let sx = Test_helpers.assoc_exn "x" stats in
       Alcotest.(check int) "count" 1 sx.count;
       Alcotest.(check (float 0.001)) "mean" 42.0 sx.mean;
       Alcotest.(check (float 0.001)) "std" 0.0 sx.std;
@@ -407,9 +397,7 @@ let describe_empty_frame () =
   | Error e -> Alcotest.fail e
   | Ok frame ->
       let stats = Cairos.Frame.describe frame in
-      let sx =
-Test_helpers.assoc_exn "x" stats
-      in
+      let sx = Test_helpers.assoc_exn "x" stats in
       Alcotest.(check int) "count" 0 sx.count;
       Alcotest.(check bool) "mean is nan" true (Float.is_nan sx.mean);
       Alcotest.(check bool) "std is nan" true (Float.is_nan sx.std);
@@ -423,9 +411,7 @@ let describe_quantile_interpolation () =
   | Error e -> Alcotest.fail e
   | Ok frame ->
       let stats = Cairos.Frame.describe frame in
-      let sx =
-Test_helpers.assoc_exn "x" stats
-      in
+      let sx = Test_helpers.assoc_exn "x" stats in
       (* h = (4-1) * 0.25 = 0.75 → lo=0, hi=1, frac=0.75 → 1.0*0.25 + 2.0*0.75 = 1.75 *)
       Alcotest.(check (float 0.001)) "p25" 1.75 sx.p25;
       (* h = (4-1) * 0.5 = 1.5 → lo=1, hi=2, frac=0.5 → 2.0*0.5 + 3.0*0.5 = 2.5 *)
