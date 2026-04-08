@@ -22,6 +22,12 @@ let slice ~start ~stop t =
   let values = Nx.slice [ R (start', stop') ] t.values in
   { index; values }
 
+let head n t = slice ~start:0 ~stop:(max 0 n) t
+
+let tail n t =
+  let len = length t in
+  slice ~start:(len - max 0 n) ~stop:len t
+
 let map f t = { index = t.index; values = f t.values }
 
 let shift n t =
@@ -58,6 +64,16 @@ let ffill t =
   done;
   let values = Nx.create (Nx.dtype t.values) [| len |] out in
   { index = t.index; values }
+
+let first_valid t =
+  let arr = Nx.to_array t.values in
+  let len = Array.length arr in
+  let rec loop i =
+    if i >= len then None
+    else if Float.is_nan arr.(i) then loop (i + 1)
+    else Some (i, arr.(i))
+  in
+  loop 0
 
 let bfill t =
   let arr = Nx.to_array t.values in

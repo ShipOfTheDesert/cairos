@@ -282,6 +282,136 @@ let pct_change_all_nan_input () =
   let vs = Nx.to_array (Cairos.Series.values result) in
   Array.iter (fun v -> Alcotest.(check bool) "is nan" true (Float.is_nan v)) vs
 
+let head_returns_first_n_entries () =
+  let s =
+    Test_helpers.make_daily_series
+      [| "2024-01-01"; "2024-01-02"; "2024-01-03"; "2024-01-04"; "2024-01-05" |]
+      [| 10.0; 20.0; 30.0; 40.0; 50.0 |]
+  in
+  let h = Cairos.Series.head 3 s in
+  Alcotest.(check int) "length" 3 (Cairos.Series.length h);
+  let vs = Nx.to_array (Cairos.Series.values h) in
+  Alcotest.(check (float 0.001)) "val 0" 10.0 vs.(0);
+  Alcotest.(check (float 0.001)) "val 1" 20.0 vs.(1);
+  Alcotest.(check (float 0.001)) "val 2" 30.0 vs.(2);
+  let ts = Cairos.Index.timestamps (Cairos.Series.index h) in
+  let orig_ts = Cairos.Index.timestamps (Cairos.Series.index s) in
+  Alcotest.(check Test_helpers.ptime_testable) "ts 0" orig_ts.(0) ts.(0);
+  Alcotest.(check Test_helpers.ptime_testable) "ts 1" orig_ts.(1) ts.(1);
+  Alcotest.(check Test_helpers.ptime_testable) "ts 2" orig_ts.(2) ts.(2)
+
+let head_clamps_to_length () =
+  let s =
+    Test_helpers.make_daily_series
+      [| "2024-01-01"; "2024-01-02"; "2024-01-03" |]
+      [| 10.0; 20.0; 30.0 |]
+  in
+  let h = Cairos.Series.head 10 s in
+  Alcotest.(check int) "length" 3 (Cairos.Series.length h)
+
+let head_zero_returns_empty () =
+  let s =
+    Test_helpers.make_daily_series
+      [| "2024-01-01"; "2024-01-02"; "2024-01-03" |]
+      [| 10.0; 20.0; 30.0 |]
+  in
+  let h = Cairos.Series.head 0 s in
+  Alcotest.(check int) "length" 0 (Cairos.Series.length h)
+
+let head_negative_returns_empty () =
+  let s =
+    Test_helpers.make_daily_series
+      [| "2024-01-01"; "2024-01-02"; "2024-01-03" |]
+      [| 10.0; 20.0; 30.0 |]
+  in
+  let h = Cairos.Series.head (-1) s in
+  Alcotest.(check int) "length" 0 (Cairos.Series.length h)
+
+let tail_returns_last_n_entries () =
+  let s =
+    Test_helpers.make_daily_series
+      [| "2024-01-01"; "2024-01-02"; "2024-01-03"; "2024-01-04"; "2024-01-05" |]
+      [| 10.0; 20.0; 30.0; 40.0; 50.0 |]
+  in
+  let t = Cairos.Series.tail 3 s in
+  Alcotest.(check int) "length" 3 (Cairos.Series.length t);
+  let vs = Nx.to_array (Cairos.Series.values t) in
+  Alcotest.(check (float 0.001)) "val 0" 30.0 vs.(0);
+  Alcotest.(check (float 0.001)) "val 1" 40.0 vs.(1);
+  Alcotest.(check (float 0.001)) "val 2" 50.0 vs.(2);
+  let ts = Cairos.Index.timestamps (Cairos.Series.index t) in
+  let orig_ts = Cairos.Index.timestamps (Cairos.Series.index s) in
+  Alcotest.(check Test_helpers.ptime_testable) "ts 0" orig_ts.(2) ts.(0);
+  Alcotest.(check Test_helpers.ptime_testable) "ts 1" orig_ts.(3) ts.(1);
+  Alcotest.(check Test_helpers.ptime_testable) "ts 2" orig_ts.(4) ts.(2)
+
+let tail_clamps_to_length () =
+  let s =
+    Test_helpers.make_daily_series
+      [| "2024-01-01"; "2024-01-02"; "2024-01-03" |]
+      [| 10.0; 20.0; 30.0 |]
+  in
+  let t = Cairos.Series.tail 10 s in
+  Alcotest.(check int) "length" 3 (Cairos.Series.length t)
+
+let tail_zero_returns_empty () =
+  let s =
+    Test_helpers.make_daily_series
+      [| "2024-01-01"; "2024-01-02"; "2024-01-03" |]
+      [| 10.0; 20.0; 30.0 |]
+  in
+  let t = Cairos.Series.tail 0 s in
+  Alcotest.(check int) "length" 0 (Cairos.Series.length t)
+
+let tail_negative_returns_empty () =
+  let s =
+    Test_helpers.make_daily_series
+      [| "2024-01-01"; "2024-01-02"; "2024-01-03" |]
+      [| 10.0; 20.0; 30.0 |]
+  in
+  let t = Cairos.Series.tail (-1) s in
+  Alcotest.(check int) "length" 0 (Cairos.Series.length t)
+
+let first_valid_finds_first_non_nan () =
+  let s =
+    Test_helpers.make_daily_series
+      [| "2024-01-01"; "2024-01-02"; "2024-01-03"; "2024-01-04" |]
+      [| Float.nan; Float.nan; 3.0; 4.0 |]
+  in
+  match Cairos.Series.first_valid s with
+  | None -> Alcotest.fail "expected Some"
+  | Some (i, v) ->
+      Alcotest.(check int) "index" 2 i;
+      Alcotest.(check (float 0.001)) "value" 3.0 v
+
+let first_valid_returns_none_all_nan () =
+  let s =
+    Test_helpers.make_daily_series
+      [| "2024-01-01"; "2024-01-02"; "2024-01-03" |]
+      [| Float.nan; Float.nan; Float.nan |]
+  in
+  Alcotest.(check bool)
+    "is None" true
+    (Option.is_none (Cairos.Series.first_valid s))
+
+let first_valid_returns_none_empty () =
+  let s = Test_helpers.make_daily_series [||] [||] in
+  Alcotest.(check bool)
+    "is None" true
+    (Option.is_none (Cairos.Series.first_valid s))
+
+let first_valid_first_element () =
+  let s =
+    Test_helpers.make_daily_series
+      [| "2024-01-01"; "2024-01-02"; "2024-01-03" |]
+      [| 1.0; 2.0; 3.0 |]
+  in
+  match Cairos.Series.first_valid s with
+  | None -> Alcotest.fail "expected Some"
+  | Some (i, v) ->
+      Alcotest.(check int) "index" 0 i;
+      Alcotest.(check (float 0.001)) "value" 1.0 v
+
 let tests =
   [
     ( "make_succeeds_with_matching_lengths",
@@ -318,6 +448,20 @@ let tests =
     ("ffill_empty_series", `Quick, ffill_empty_series);
     ("bfill_no_nans_identity", `Quick, bfill_no_nans_identity);
     ("bfill_empty_series", `Quick, bfill_empty_series);
+    ("head_returns_first_n_entries", `Quick, head_returns_first_n_entries);
+    ("head_clamps_to_length", `Quick, head_clamps_to_length);
+    ("head_zero_returns_empty", `Quick, head_zero_returns_empty);
+    ("head_negative_returns_empty", `Quick, head_negative_returns_empty);
+    ("tail_returns_last_n_entries", `Quick, tail_returns_last_n_entries);
+    ("tail_clamps_to_length", `Quick, tail_clamps_to_length);
+    ("tail_zero_returns_empty", `Quick, tail_zero_returns_empty);
+    ("tail_negative_returns_empty", `Quick, tail_negative_returns_empty);
+    ("first_valid_finds_first_non_nan", `Quick, first_valid_finds_first_non_nan);
+    ( "first_valid_returns_none_all_nan",
+      `Quick,
+      first_valid_returns_none_all_nan );
+    ("first_valid_returns_none_empty", `Quick, first_valid_returns_none_empty);
+    ("first_valid_first_element", `Quick, first_valid_first_element);
   ]
 
 let () = Alcotest.run "Series" [ ("Series", tests) ]

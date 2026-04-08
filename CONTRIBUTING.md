@@ -157,7 +157,27 @@ brief example for non-obvious functions.
 Internal functions do not need doc comments by default. Prefer clear naming
 and narrow scope over compensatory documentation.
 
-### IX. Quality Gate
+### IX. Notebook Code Is Not Library Code
+
+Jupyter notebooks (`notebooks/*.ml`) are sequential demo scripts, not library
+modules. They follow different error-handling rules than the core library:
+
+- **Crash early with a clear message.** Unwrap `result` values immediately
+  (e.g., `Result.get_ok` or `match ... | Error e -> failwith e`). Do not
+  propagate `Option` or `Result` through subsequent cells.
+- **No defensive wrapping.** Downstream cells should receive plain values, not
+  `option`s. If a cell fails, the notebook stops — that is the correct
+  behaviour.
+- **Solutions library exemptions.** `result-let-binding`, `avoid-result-get-ok`,
+  and `exhaustive-variant-matching` do not apply to notebook code. These
+  conventions exist to protect library consumers; notebooks have no consumers.
+
+The rationale: notebooks are sequential. If cell 3 fails, there is no point
+running cell 7 with `None`. A crash with a clear error is better UX than
+`match x with Some ... | None -> print "unavailable"` boilerplate on every
+downstream binding.
+
+### X. Quality Gate
 
 Every commit must pass:
 
