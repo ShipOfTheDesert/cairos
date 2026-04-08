@@ -319,3 +319,5 @@ let tests =
     ("bfill_no_nans_identity", `Quick, bfill_no_nans_identity);
     ("bfill_empty_series", `Quick, bfill_empty_series);
   ]
+
+let () = Alcotest.run "Series" [ ("Series", tests) ]

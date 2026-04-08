@@ -484,3 +484,5 @@ let tests =
     ("map2_with_asof_backward", `Quick, map2_with_asof_backward);
     ("inner_identical_timestamps", `Quick, inner_identical_timestamps);
   ]
+
+let () = Alcotest.run "Align" [ ("Align", tests) ]

@@ -348,3 +348,5 @@ let tests =
     ("week_53_boundary", `Quick, week_53_boundary);
     ("year_boundary_weekly", `Quick, year_boundary_weekly);
   ]
+
+let () = Alcotest.run "Resample" [ ("Resample", tests) ]

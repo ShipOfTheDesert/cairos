@@ -221,3 +221,5 @@ let tests =
     ("rolling_max_known_values", `Quick, rolling_max_known_values);
     ("rolling_n_zero_all_nan", `Quick, rolling_n_zero_all_nan);
   ]
+
+let () = Alcotest.run "Window" [ ("Window", tests) ]
