@@ -21,8 +21,7 @@ let read_fixture path : (float array, string) result =
       in
       parse [] 1 lines
 
-(* write_computed is used by the cross-validation harness, not by unit tests *)
-let[@warning "-32"] write_computed path (arr : float array) : unit =
+let write_computed path (arr : float array) : unit =
   Out_channel.with_open_text path (fun oc ->
       Array.iter (fun v -> Printf.fprintf oc "%.17g\n" v) arr)
 
@@ -116,6 +115,81 @@ let compare_arrays_fails_on_length_mismatch () =
       Alcotest.(check bool)
         "error mentions expected length" true (string_contains msg "3")
 
+(* --- Cross-validation tests --- *)
+
+let fixture_dir = "validation/fixtures"
+
+let load_prices series_name : float array =
+  let path = Filename.concat fixture_dir ("input_" ^ series_name ^ ".csv") in
+  match read_fixture path with
+  | Ok arr -> arr
+  | Error msg ->
+      Alcotest.fail (Printf.sprintf "load_prices(%s): %s" series_name msg)
+
+let load_reference metric series_name : float array =
+  let path =
+    Filename.concat fixture_dir (metric ^ "_" ^ series_name ^ ".csv")
+  in
+  match read_fixture path with
+  | Ok arr -> arr
+  | Error msg ->
+      Alcotest.fail
+        (Printf.sprintf "load_reference(%s,%s): %s" metric series_name msg)
+
+let validate_metric ~metric ~series_name ~compute () =
+  let prices = load_prices series_name in
+  let expected = load_reference metric series_name in
+  let series = Finance_test_helpers.make_daily_series prices in
+  let returns = Cairos.Series.pct_change series in
+  let actual_scalar = compute returns in
+  let actual = [| actual_scalar |] in
+  match compare_arrays ~tolerance:1e-10 ~expected ~actual with
+  | Ok () -> ()
+  | Error msg ->
+      let tmp =
+        Filename.temp_file
+          (Printf.sprintf "cairos_cv_%s_%s_" metric series_name)
+          ".csv"
+      in
+      write_computed tmp actual;
+      Alcotest.fail
+        (Printf.sprintf "%s/%s mismatch: %s\n  expected: %s\n  computed: %s"
+           metric series_name msg
+           (Filename.concat fixture_dir (metric ^ "_" ^ series_name ^ ".csv"))
+           tmp)
+
+let validate_cumulative_return_normal () =
+  validate_metric ~metric:"cumulative_return" ~series_name:"normal"
+    ~compute:Cairos_finance.cumulative_return ()
+
+let validate_cumulative_return_drawdown () =
+  validate_metric ~metric:"cumulative_return" ~series_name:"drawdown"
+    ~compute:Cairos_finance.cumulative_return ()
+
+let validate_cumulative_return_flat () =
+  validate_metric ~metric:"cumulative_return" ~series_name:"flat"
+    ~compute:Cairos_finance.cumulative_return ()
+
+let validate_cumulative_return_extreme () =
+  validate_metric ~metric:"cumulative_return" ~series_name:"extreme"
+    ~compute:Cairos_finance.cumulative_return ()
+
+let validate_annualised_return_normal () =
+  validate_metric ~metric:"annualised_return" ~series_name:"normal"
+    ~compute:Cairos_finance.annualised_return ()
+
+let validate_annualised_return_drawdown () =
+  validate_metric ~metric:"annualised_return" ~series_name:"drawdown"
+    ~compute:Cairos_finance.annualised_return ()
+
+let validate_annualised_return_flat () =
+  validate_metric ~metric:"annualised_return" ~series_name:"flat"
+    ~compute:Cairos_finance.annualised_return ()
+
+let validate_annualised_return_extreme () =
+  validate_metric ~metric:"annualised_return" ~series_name:"extreme"
+    ~compute:Cairos_finance.annualised_return ()
+
 let () =
   Alcotest.run "cross_validate"
     [
@@ -134,5 +208,27 @@ let () =
             compare_arrays_fails_on_divergence;
           Alcotest.test_case "fails on length mismatch" `Quick
             compare_arrays_fails_on_length_mismatch;
+        ] );
+      ( "cumulative_return",
+        [
+          Alcotest.test_case "normal vs Pandas" `Quick
+            validate_cumulative_return_normal;
+          Alcotest.test_case "drawdown vs Pandas" `Quick
+            validate_cumulative_return_drawdown;
+          Alcotest.test_case "flat vs Pandas" `Quick
+            validate_cumulative_return_flat;
+          Alcotest.test_case "extreme vs Pandas" `Quick
+            validate_cumulative_return_extreme;
+        ] );
+      ( "annualised_return",
+        [
+          Alcotest.test_case "normal vs Pandas" `Quick
+            validate_annualised_return_normal;
+          Alcotest.test_case "drawdown vs Pandas" `Quick
+            validate_annualised_return_drawdown;
+          Alcotest.test_case "flat vs Pandas" `Quick
+            validate_annualised_return_flat;
+          Alcotest.test_case "extreme vs Pandas" `Quick
+            validate_annualised_return_extreme;
         ] );
     ]

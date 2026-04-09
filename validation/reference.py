@@ -23,12 +23,28 @@ def write_csv(name: str, values: list[float]) -> None:
             f.write(f"{v:.17g}\n")
 
 
+def write_scalar(name: str, value: float) -> None:
+    write_csv(name, [value])
+
+
+def cumulative_return(prices: list[float]) -> float:
+    returns = pd.Series(prices).pct_change()
+    return float((1 + returns).prod() - 1)
+
+
+def annualised_return(prices: list[float], ann_factor: float = 252.0) -> float:
+    returns = pd.Series(prices).pct_change().dropna()
+    n = len(returns)
+    cum_ret = float((1 + returns).prod() - 1)
+    return float((1 + cum_ret) ** (ann_factor / n) - 1)
+
+
 def main():
     FIXTURES.mkdir(parents=True, exist_ok=True)
     for name, prices in SERIES.items():
         write_csv(f"input_{name}", prices)
-    # Metric functions will be added here:
-    # e.g., write_csv("cumulative_return_normal", cumulative_return(SERIES["normal"]))
+        write_scalar(f"cumulative_return_{name}", cumulative_return(prices))
+        write_scalar(f"annualised_return_{name}", annualised_return(prices))
 
 
 if __name__ == "__main__":
