@@ -41,6 +41,14 @@ val slice :
 (** [slice ~start ~stop s] returns sub-series for half-open range
     [\[start, stop)]. Bounds are clamped to [[0, length s]]. *)
 
+val head : int -> ('freq, ('v, 'b) Nx.t) t -> ('freq, ('v, 'b) Nx.t) t
+(** [head n s] returns the first [n] entries of [s]. Clamps to [length s] if [n]
+    exceeds length. Returns an empty series when [n <= 0]. *)
+
+val tail : int -> ('freq, ('v, 'b) Nx.t) t -> ('freq, ('v, 'b) Nx.t) t
+(** [tail n s] returns the last [n] entries of [s]. Clamps to [length s] if [n]
+    exceeds length. Returns an empty series when [n <= 0]. *)
+
 (** {1 Transformation} *)
 
 val map : ('v -> 'w) -> ('freq, 'v) t -> ('freq, 'w) t
@@ -63,6 +71,10 @@ val pct_change : ('freq, (float, 'b) Nx.t) t -> ('freq, (float, 'b) Nx.t) t
 (** [pct_change s] computes [(v[i] - v[i-1]) / v[i-1]] for each element. The
     first element is [Float.nan]. Division follows IEEE 754: [x / 0.0] yields
     [infinity] or [neg_infinity]; [0.0 / 0.0] yields [nan]. *)
+
+val first_valid : ('freq, (float, 'b) Nx.t) t -> (int * float) option
+(** [first_valid s] returns [Some (i, v)] where [i] is the position of the first
+    non-NaN value [v], or [None] if the series is empty or all NaN. *)
 
 val ffill : ('freq, (float, 'b) Nx.t) t -> ('freq, (float, 'b) Nx.t) t
 (** [ffill s] replaces each [Float.nan] with the most recent preceding non-NaN
