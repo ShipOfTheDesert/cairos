@@ -29,3 +29,24 @@
   ptime
   nx
   (alcotest :with-test)))
+
+(package
+ (name cairos_finance)
+ (synopsis "Financial metrics for Cairos time-series")
+ (description "Cross-validated financial metrics built on Cairos core")
+ (depends
+  (ptime
+   (and
+    (>= 1.2.0)
+    :with-test))
+  (nx
+   (and
+    (>= 1.0.0~alpha2)
+    :with-test))
+  (fmt
+   (and
+    (>= 0.11.0)
+    :with-test))
+  cairos
+  ocaml
+  (alcotest :with-test)))
