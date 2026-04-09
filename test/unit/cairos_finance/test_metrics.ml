@@ -107,6 +107,84 @@ let ann_factor_weekly () =
     (expected_ann ~factor:52.0)
     (Cairos_finance.annualised_return s)
 
+(* === annualised_vol — degenerate inputs === *)
+
+let vol_empty_is_nan () =
+  let s = make_daily_series [||] in
+  Alcotest.(check bool)
+    "empty → nan" true
+    (Float.is_nan (Cairos_finance.annualised_vol s))
+
+let vol_all_nan_is_nan () =
+  let s = make_daily_series [| Float.nan; Float.nan; Float.nan |] in
+  Alcotest.(check bool)
+    "all-NaN → nan" true
+    (Float.is_nan (Cairos_finance.annualised_vol s))
+
+let vol_single_non_nan_is_nan () =
+  (* n = 1 < 2: sample std is undefined. *)
+  let s = make_daily_series [| Float.nan; 0.01 |] in
+  Alcotest.(check bool)
+    "single non-NaN → nan" true
+    (Float.is_nan (Cairos_finance.annualised_vol s))
+
+let vol_skips_mid_nan () =
+  (* With [0.01; nan; -0.01]: n=2, mean=0, sample std = sqrt(((0.01)^2 +
+     (-0.01)^2) / (2-1)) = sqrt(0.0002). Reproduce the function's exact
+     computation order so the result is bit-identical. *)
+  let s = make_daily_series [| 0.01; Float.nan; -0.01 |] in
+  let std = Float.sqrt 0.0002 in
+  let expected = std *. Float.sqrt 252.0 in
+  Alcotest.(check (float 1e-15))
+    "mid-series NaN excluded from mean and std" expected
+    (Cairos_finance.annualised_vol s)
+
+(* === sharpe — degenerate inputs === *)
+
+let sharpe_empty_is_nan () =
+  let s = make_daily_series [||] in
+  Alcotest.(check bool)
+    "empty → nan" true
+    (Float.is_nan (Cairos_finance.sharpe ~risk_free:0.0 s))
+
+let sharpe_all_nan_is_nan () =
+  let s = make_daily_series [| Float.nan; Float.nan |] in
+  Alcotest.(check bool)
+    "all-NaN → nan" true
+    (Float.is_nan (Cairos_finance.sharpe ~risk_free:0.0 s))
+
+let sharpe_single_non_nan_is_nan () =
+  let s = make_daily_series [| Float.nan; 0.01 |] in
+  Alcotest.(check bool)
+    "single non-NaN → nan (n<2)" true
+    (Float.is_nan (Cairos_finance.sharpe ~risk_free:0.0 s))
+
+let sharpe_constant_returns_rf0_is_nan () =
+  (* All-zero returns with rf=0 → excess all zero → std=0 → nan
+     (0/0 path). Decoupled from the cross-validation flat fixture. *)
+  let s = make_daily_series [| 0.0; 0.0; 0.0; 0.0 |] in
+  Alcotest.(check bool)
+    "constant returns, rf=0 → nan" true
+    (Float.is_nan (Cairos_finance.sharpe ~risk_free:0.0 s))
+
+let sharpe_constant_returns_rf_nonzero_is_nan () =
+  (* All-zero returns with rf>0 → excess is a non-zero constant → std=0
+     but mean ≠ 0. Without the std=0 guard this would be ±inf, not nan.
+     This is the branch that would silently regress if the guard were
+     dropped. *)
+  let s = make_daily_series [| 0.0; 0.0; 0.0; 0.0 |] in
+  Alcotest.(check bool)
+    "constant returns, rf=0.04 → nan (not ±inf)" true
+    (Float.is_nan (Cairos_finance.sharpe ~risk_free:0.04 s))
+
+let sharpe_skips_mid_nan () =
+  (* With [0.01; nan; -0.01], rf=0: excess = [0.01; nan; -0.01], n=2,
+     mean=0, std=sqrt(0.0002). Sharpe = 0 / std * sqrt(252) = 0. *)
+  let s = make_daily_series [| 0.01; Float.nan; -0.01 |] in
+  Alcotest.(check (float 1e-15))
+    "mid-series NaN excluded" 0.0
+    (Cairos_finance.sharpe ~risk_free:0.0 s)
+
 let () =
   Alcotest.run "cairos_finance"
     [
@@ -129,5 +207,25 @@ let () =
           Alcotest.test_case "Hour → 1638" `Quick ann_factor_hourly;
           Alcotest.test_case "Minute → 98280" `Quick ann_factor_minute;
           Alcotest.test_case "Week → 52" `Quick ann_factor_weekly;
+        ] );
+      ( "annualised_vol",
+        [
+          Alcotest.test_case "empty → nan" `Quick vol_empty_is_nan;
+          Alcotest.test_case "all-NaN → nan" `Quick vol_all_nan_is_nan;
+          Alcotest.test_case "single non-NaN → nan" `Quick
+            vol_single_non_nan_is_nan;
+          Alcotest.test_case "skips mid-series NaN" `Quick vol_skips_mid_nan;
+        ] );
+      ( "sharpe",
+        [
+          Alcotest.test_case "empty → nan" `Quick sharpe_empty_is_nan;
+          Alcotest.test_case "all-NaN → nan" `Quick sharpe_all_nan_is_nan;
+          Alcotest.test_case "single non-NaN → nan" `Quick
+            sharpe_single_non_nan_is_nan;
+          Alcotest.test_case "constant returns, rf=0 → nan" `Quick
+            sharpe_constant_returns_rf0_is_nan;
+          Alcotest.test_case "constant returns, rf=0.04 → nan (not ±inf)" `Quick
+            sharpe_constant_returns_rf_nonzero_is_nan;
+          Alcotest.test_case "skips mid-series NaN" `Quick sharpe_skips_mid_nan;
         ] );
     ]

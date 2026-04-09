@@ -26,6 +26,11 @@ let write_computed path (arr : float array) : unit =
       Array.iter (fun v -> Printf.fprintf oc "%.17g\n" v) arr)
 
 let compare_arrays ~tolerance ~expected ~actual : (unit, string) result =
+  (* NaN handling (added for RFC 0022 Risk #2): two NaNs at the same index
+     compare equal (the [sharpe] flat-series fixture relies on this), but
+     NaN versus a finite value is a mismatch. The previous implementation
+     silently passed both cases because [Float.abs nan > tolerance] is
+     [false], which let nan-vs-real divergences slip through unnoticed. *)
   let elen = Array.length expected in
   let alen = Array.length actual in
   if elen <> alen then
@@ -34,13 +39,21 @@ let compare_arrays ~tolerance ~expected ~actual : (unit, string) result =
     let rec check i =
       if i >= elen then Ok ()
       else
-        let diff = Float.abs (expected.(i) -. actual.(i)) in
-        if diff > tolerance then
+        let e = expected.(i) and a = actual.(i) in
+        let e_nan = Float.is_nan e and a_nan = Float.is_nan a in
+        if e_nan && a_nan then check (i + 1)
+        else if e_nan || a_nan then
           Error
             (Printf.sprintf
-               "mismatch at index %d: expected %.17g, got %.17g (diff %.17g)" i
-               expected.(i) actual.(i) diff)
-        else check (i + 1)
+               "mismatch at index %d: expected %.17g, got %.17g (NaN)" i e a)
+        else
+          let diff = Float.abs (e -. a) in
+          if diff > tolerance then
+            Error
+              (Printf.sprintf
+                 "mismatch at index %d: expected %.17g, got %.17g (diff %.17g)"
+                 i e a diff)
+          else check (i + 1)
     in
     check 0
 
@@ -101,6 +114,23 @@ let compare_arrays_fails_on_divergence () =
   let actual = [| 1.0; 2.5; 3.0 |] in
   match compare_arrays ~tolerance:1e-10 ~expected ~actual with
   | Ok () -> Alcotest.fail "expected Error for divergent arrays"
+  | Error msg ->
+      Alcotest.(check bool)
+        "error mentions index" true
+        (string_contains msg "index 1")
+
+let compare_arrays_treats_nan_at_same_index_as_equal () =
+  let expected = [| 1.0; Float.nan; 3.0 |] in
+  let actual = [| 1.0; Float.nan; 3.0 |] in
+  match compare_arrays ~tolerance:1e-10 ~expected ~actual with
+  | Ok () -> ()
+  | Error msg -> Alcotest.fail ("unexpected error: " ^ msg)
+
+let compare_arrays_fails_when_only_one_side_is_nan () =
+  let expected = [| 1.0; Float.nan; 3.0 |] in
+  let actual = [| 1.0; 2.0; 3.0 |] in
+  match compare_arrays ~tolerance:1e-10 ~expected ~actual with
+  | Ok () -> Alcotest.fail "expected Error for nan/non-nan mismatch"
   | Error msg ->
       Alcotest.(check bool)
         "error mentions index" true
@@ -190,6 +220,62 @@ let validate_annualised_return_extreme () =
   validate_metric ~metric:"annualised_return" ~series_name:"extreme"
     ~compute:Cairos_finance.annualised_return ()
 
+let validate_annualised_vol_normal () =
+  validate_metric ~metric:"annualised_vol" ~series_name:"normal"
+    ~compute:Cairos_finance.annualised_vol ()
+
+let validate_annualised_vol_drawdown () =
+  validate_metric ~metric:"annualised_vol" ~series_name:"drawdown"
+    ~compute:Cairos_finance.annualised_vol ()
+
+let validate_annualised_vol_flat () =
+  validate_metric ~metric:"annualised_vol" ~series_name:"flat"
+    ~compute:Cairos_finance.annualised_vol ()
+
+let validate_annualised_vol_extreme () =
+  validate_metric ~metric:"annualised_vol" ~series_name:"extreme"
+    ~compute:Cairos_finance.annualised_vol ()
+
+let validate_sharpe_rf0_normal () =
+  validate_metric ~metric:"sharpe_rf0" ~series_name:"normal"
+    ~compute:(Cairos_finance.sharpe ~risk_free:0.0)
+    ()
+
+let validate_sharpe_rf0_drawdown () =
+  validate_metric ~metric:"sharpe_rf0" ~series_name:"drawdown"
+    ~compute:(Cairos_finance.sharpe ~risk_free:0.0)
+    ()
+
+let validate_sharpe_rf0_flat () =
+  validate_metric ~metric:"sharpe_rf0" ~series_name:"flat"
+    ~compute:(Cairos_finance.sharpe ~risk_free:0.0)
+    ()
+
+let validate_sharpe_rf0_extreme () =
+  validate_metric ~metric:"sharpe_rf0" ~series_name:"extreme"
+    ~compute:(Cairos_finance.sharpe ~risk_free:0.0)
+    ()
+
+let validate_sharpe_rf4_normal () =
+  validate_metric ~metric:"sharpe_rf4" ~series_name:"normal"
+    ~compute:(Cairos_finance.sharpe ~risk_free:0.04)
+    ()
+
+let validate_sharpe_rf4_drawdown () =
+  validate_metric ~metric:"sharpe_rf4" ~series_name:"drawdown"
+    ~compute:(Cairos_finance.sharpe ~risk_free:0.04)
+    ()
+
+let validate_sharpe_rf4_flat () =
+  validate_metric ~metric:"sharpe_rf4" ~series_name:"flat"
+    ~compute:(Cairos_finance.sharpe ~risk_free:0.04)
+    ()
+
+let validate_sharpe_rf4_extreme () =
+  validate_metric ~metric:"sharpe_rf4" ~series_name:"extreme"
+    ~compute:(Cairos_finance.sharpe ~risk_free:0.04)
+    ()
+
 let () =
   Alcotest.run "cross_validate"
     [
@@ -208,6 +294,10 @@ let () =
             compare_arrays_fails_on_divergence;
           Alcotest.test_case "fails on length mismatch" `Quick
             compare_arrays_fails_on_length_mismatch;
+          Alcotest.test_case "treats nan at same index as equal" `Quick
+            compare_arrays_treats_nan_at_same_index_as_equal;
+          Alcotest.test_case "fails when only one side is nan" `Quick
+            compare_arrays_fails_when_only_one_side_is_nan;
         ] );
       ( "cumulative_return",
         [
@@ -230,5 +320,36 @@ let () =
             validate_annualised_return_flat;
           Alcotest.test_case "extreme vs Pandas" `Quick
             validate_annualised_return_extreme;
+        ] );
+      ( "annualised_vol",
+        [
+          Alcotest.test_case "normal vs Pandas" `Quick
+            validate_annualised_vol_normal;
+          Alcotest.test_case "drawdown vs Pandas" `Quick
+            validate_annualised_vol_drawdown;
+          Alcotest.test_case "flat vs Pandas" `Quick
+            validate_annualised_vol_flat;
+          Alcotest.test_case "extreme vs Pandas" `Quick
+            validate_annualised_vol_extreme;
+        ] );
+      ( "sharpe_rf0",
+        [
+          Alcotest.test_case "normal vs Pandas" `Quick
+            validate_sharpe_rf0_normal;
+          Alcotest.test_case "drawdown vs Pandas" `Quick
+            validate_sharpe_rf0_drawdown;
+          Alcotest.test_case "flat vs Pandas" `Quick validate_sharpe_rf0_flat;
+          Alcotest.test_case "extreme vs Pandas" `Quick
+            validate_sharpe_rf0_extreme;
+        ] );
+      ( "sharpe_rf4",
+        [
+          Alcotest.test_case "normal vs Pandas" `Quick
+            validate_sharpe_rf4_normal;
+          Alcotest.test_case "drawdown vs Pandas" `Quick
+            validate_sharpe_rf4_drawdown;
+          Alcotest.test_case "flat vs Pandas" `Quick validate_sharpe_rf4_flat;
+          Alcotest.test_case "extreme vs Pandas" `Quick
+            validate_sharpe_rf4_extreme;
         ] );
     ]
