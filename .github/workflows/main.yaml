@@ -27,6 +27,25 @@ jobs:
       - name: Test
         run: just test
 
+  cross-validation:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      - uses: extractions/setup-just@v3
+        with:
+          just-version: '1.46.0'
+      - uses: ./.github/actions/ocaml-deps
+      - uses: astral-sh/setup-uv@v6
+
+      - name: Build
+        run: just build
+
+      - name: Cross-validate
+        run: just validate
+
   # create-release:
   #   runs-on: ubuntu-latest
   #   needs: [build-test]

@@ -1,4 +1,5 @@
 (executable
  (public_name cairos)
+ (package cairos)
  (name main)
  (libraries cairos))

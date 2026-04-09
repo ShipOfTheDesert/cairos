@@ -1,0 +1,4 @@
+(library
+ (name cairos_finance)
+ (public_name cairos_finance)
+ (libraries cairos))

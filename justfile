@@ -1,4 +1,4 @@
-default: build test fmt lint notebooks
+default: build test fmt lint validate notebooks
 
 build:
     opam exec -- dune build
@@ -19,6 +19,19 @@ lint-opam:
     opam exec -- opam-dune-lint
 
 lint: lint-doc lint-fmt lint-opam
+
+validate-generate:
+    uv run validation/reference.py
+
+validate-check:
+    opam exec -- dune exec test/unit/cairos_finance/cross_validate.exe
+
+validate:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    command -v uv >/dev/null || { echo "uv not installed, skipping validation"; exit 0; }
+    just validate-generate
+    just validate-check
 
 # Soft-skips when jupytext/papermill are absent so `just` passes on machines
 # without the Jupyter toolchain. CI must install both to enforce notebook execution.
