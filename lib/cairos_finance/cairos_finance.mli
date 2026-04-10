@@ -71,3 +71,43 @@ val sharpe :
     NaN values in [returns] are skipped. Returns [nan] when fewer than 2 non-NaN
     values are present, or when the std of excess returns is [0.0] (a constant
     series). *)
+
+val drawdown_series :
+  ('freq, (float, 'b) Nx.t) Cairos.Series.t ->
+  ('freq, (float, Bigarray.float64_elt) Nx.t) Cairos.Series.t
+(** [drawdown_series returns] is the per-element drawdown of a returns series,
+    defined as [(wealth - peak) / peak] where [wealth = cumprod(1 +. r)] and
+    [peak = cummax(wealth)].
+
+    The output series has the same length and the same {!Cairos.Index.t} as the
+    input. Output values are non-positive: [0.0] when the wealth index is at a
+    new high, and a negative fraction when underwater.
+
+    The caller is responsible for dropping the leading NaN produced by
+    {!Cairos.Series.pct_change} before calling this function. A series-returning
+    metric must produce an output index aligned with its input; silently
+    dropping the leading NaN would break that alignment. The standard call site
+    is:
+    {[
+      let returns =
+        Cairos.Series.pct_change prices |> fun r ->
+        Cairos.Series.slice ~start:1 ~stop:(Cairos.Series.length r) r
+      in
+      Cairos_finance.drawdown_series returns
+    ]}
+
+    Behaviour is undefined if the input contains NaN. *)
+
+val max_drawdown : ('freq, (float, 'b) Nx.t) Cairos.Series.t -> float
+(** [max_drawdown returns] is the magnitude of the worst peak-to-trough decline
+    of the wealth index implied by [returns], returned as a non-negative
+    fraction in [0.0, 1.0].
+
+    For a flat returns series (all zeros), the wealth index is constant at
+    [1.0], the drawdown series is identically [0.0], and [max_drawdown] returns
+    [0.0] — not [nan]. This is the financially correct answer (a strategy that
+    never lost has zero drawdown) and matches the Pandas reference directly.
+
+    The caller is responsible for dropping the leading NaN produced by
+    {!Cairos.Series.pct_change} before calling this function. Behaviour is
+    undefined if the input contains NaN. *)
