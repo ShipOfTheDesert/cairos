@@ -28,6 +28,14 @@ def write_scalar(name: str, value: float) -> None:
     write_csv(name, [value])
 
 
+def write_series_csv(name: str, rows: list[tuple[int, float]]) -> None:
+    path = FIXTURES / f"{name}.csv"
+    with open(path, "w") as f:
+        f.write("index,value\n")
+        for idx, val in rows:
+            f.write(f"{idx},{val:.17g}\n")
+
+
 def cumulative_return(prices: list[float]) -> float:
     returns = pd.Series(prices).pct_change()
     return float((1 + returns).prod() - 1)
@@ -67,6 +75,25 @@ def sharpe(
     return float(excess.mean() / std * math.sqrt(ann_factor))
 
 
+def drawdown_series(prices: list[float]) -> list[tuple[int, float]]:
+    returns = pd.Series(prices).pct_change().dropna().reset_index(drop=True)
+    wealth = (1 + returns).cumprod()
+    peak = wealth.cummax()
+    dd = (wealth - peak) / peak
+    return list(enumerate(dd.tolist()))
+
+
+def max_drawdown(prices: list[float]) -> float:
+    returns = pd.Series(prices).pct_change().dropna()
+    wealth = (1 + returns).cumprod()
+    peak = wealth.cummax()
+    dd = (wealth - peak) / peak
+    # Decision 3: returned as a positive magnitude.
+    # Decision 4: flat series produces dd = [0,0,...], min = 0.0, abs = 0.0
+    # — no special-case guard needed; Pandas yields 0.0 directly.
+    return float(abs(dd.min()))
+
+
 def main():
     FIXTURES.mkdir(parents=True, exist_ok=True)
     for name, prices in SERIES.items():
@@ -76,6 +103,8 @@ def main():
         write_scalar(f"annualised_vol_{name}", annualised_vol(prices))
         write_scalar(f"sharpe_rf0_{name}", sharpe(prices, risk_free=0.0))
         write_scalar(f"sharpe_rf4_{name}", sharpe(prices, risk_free=0.04))
+        write_scalar(f"max_drawdown_{name}", max_drawdown(prices))
+        write_series_csv(f"drawdown_series_{name}", drawdown_series(prices))
 
 
 if __name__ == "__main__":

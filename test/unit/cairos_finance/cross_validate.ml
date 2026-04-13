@@ -25,6 +25,95 @@ let write_computed path (arr : float array) : unit =
   Out_channel.with_open_text path (fun oc ->
       Array.iter (fun v -> Printf.fprintf oc "%.17g\n" v) arr)
 
+let read_series_fixture path : (int * float) array =
+  match In_channel.with_open_text path In_channel.input_all with
+  | exception Sys_error msg ->
+      failwith (Printf.sprintf "read_series_fixture: %s" msg)
+  | content -> (
+      let lines =
+        String.split_on_char '\n' content
+        |> List.filter (fun s -> String.length (String.trim s) > 0)
+      in
+      match lines with
+      | [] -> failwith (Printf.sprintf "read_series_fixture: %s is empty" path)
+      | header :: data_lines ->
+          if String.trim header <> "index,value" then
+            failwith
+              (Printf.sprintf
+                 "read_series_fixture: expected header 'index,value', got %S \
+                  in %s"
+                 (String.trim header) path);
+          let rec parse acc line_num = function
+            | [] -> Array.of_list (List.rev acc)
+            | line :: rest -> (
+                let trimmed = String.trim line in
+                match String.split_on_char ',' trimmed with
+                | [ idx_s; val_s ] -> (
+                    match
+                      (int_of_string_opt idx_s, float_of_string_opt val_s)
+                    with
+                    | Some idx, Some v ->
+                        parse ((idx, v) :: acc) (line_num + 1) rest
+                    | None, _ ->
+                        failwith
+                          (Printf.sprintf
+                             "read_series_fixture: malformed index at line %d: \
+                              %S in %s"
+                             line_num idx_s path)
+                    | _, None ->
+                        failwith
+                          (Printf.sprintf
+                             "read_series_fixture: malformed float at line %d: \
+                              %S in %s"
+                             line_num val_s path))
+                | _ ->
+                    failwith
+                      (Printf.sprintf
+                         "read_series_fixture: expected 2 columns at line %d, \
+                          got %S in %s"
+                         line_num trimmed path))
+          in
+          parse [] 2 data_lines)
+
+let write_computed_series path (arr : (int * float) array) : unit =
+  Out_channel.with_open_text path (fun oc ->
+      Printf.fprintf oc "index,value\n";
+      Array.iter (fun (idx, v) -> Printf.fprintf oc "%d,%.17g\n" idx v) arr)
+
+let compare_series ~tolerance ~expected ~actual : (unit, string) result =
+  let elen = Array.length expected in
+  let alen = Array.length actual in
+  if elen <> alen then
+    Error (Printf.sprintf "length mismatch: expected %d, got %d" elen alen)
+  else
+    let rec check i =
+      if i >= elen then Ok ()
+      else
+        let ei, ev = expected.(i) and ai, av = actual.(i) in
+        if ei <> ai then
+          Error
+            (Printf.sprintf "index mismatch at row %d: expected %d, got %d" i ei
+               ai)
+        else
+          let e_nan = Float.is_nan ev and a_nan = Float.is_nan av in
+          if e_nan && a_nan then check (i + 1)
+          else if e_nan || a_nan then
+            Error
+              (Printf.sprintf
+                 "mismatch at index %d: expected %.17g, got %.17g (NaN)" ei ev
+                 av)
+          else
+            let diff = Float.abs (ev -. av) in
+            if diff > tolerance then
+              Error
+                (Printf.sprintf
+                   "mismatch at index %d: expected %.17g, got %.17g (diff \
+                    %.17g)"
+                   ei ev av diff)
+            else check (i + 1)
+    in
+    check 0
+
 let compare_arrays ~tolerance ~expected ~actual : (unit, string) result =
   (* NaN handling (added for RFC 0022 Risk #2): two NaNs at the same index
      compare equal (the [sharpe] flat-series fixture relies on this), but
@@ -166,14 +255,14 @@ let load_reference metric series_name : float array =
       Alcotest.fail
         (Printf.sprintf "load_reference(%s,%s): %s" metric series_name msg)
 
-let validate_metric ~metric ~series_name ~compute () =
+let validate_metric ?(tolerance = 1e-10) ~metric ~series_name ~compute () =
   let prices = load_prices series_name in
   let expected = load_reference metric series_name in
   let series = Finance_test_helpers.make_daily_series prices in
   let returns = Cairos.Series.pct_change series in
   let actual_scalar = compute returns in
   let actual = [| actual_scalar |] in
-  match compare_arrays ~tolerance:1e-10 ~expected ~actual with
+  match compare_arrays ~tolerance ~expected ~actual with
   | Ok () -> ()
   | Error msg ->
       let tmp =
@@ -182,6 +271,37 @@ let validate_metric ~metric ~series_name ~compute () =
           ".csv"
       in
       write_computed tmp actual;
+      Alcotest.fail
+        (Printf.sprintf "%s/%s mismatch: %s\n  expected: %s\n  computed: %s"
+           metric series_name msg
+           (Filename.concat fixture_dir (metric ^ "_" ^ series_name ^ ".csv"))
+           tmp)
+
+let load_series_reference metric series_name : (int * float) array =
+  let path =
+    Filename.concat fixture_dir (metric ^ "_" ^ series_name ^ ".csv")
+  in
+  read_series_fixture path
+
+let validate_series_metric ~metric ~series_name ~tolerance ~compute () =
+  let prices = load_prices series_name in
+  let expected = load_series_reference metric series_name in
+  let series = Finance_test_helpers.make_daily_series prices in
+  let returns = Cairos.Series.pct_change series in
+  let len = Cairos.Series.length returns in
+  let returns_no_nan = Cairos.Series.slice ~start:1 ~stop:len returns in
+  let result_series = compute returns_no_nan in
+  let result_values = Nx.to_array (Cairos.Series.values result_series) in
+  let actual = Array.mapi (fun i v -> (i, v)) result_values in
+  match compare_series ~tolerance ~expected ~actual with
+  | Ok () -> ()
+  | Error msg ->
+      let tmp =
+        Filename.temp_file
+          (Printf.sprintf "cairos_cv_%s_%s_" metric series_name)
+          ".csv"
+      in
+      write_computed_series tmp actual;
       Alcotest.fail
         (Printf.sprintf "%s/%s mismatch: %s\n  expected: %s\n  computed: %s"
            metric series_name msg
@@ -276,6 +396,43 @@ let validate_sharpe_rf4_extreme () =
     ~compute:(Cairos_finance.sharpe ~risk_free:0.04)
     ()
 
+let max_drawdown_compute returns =
+  let len = Cairos.Series.length returns in
+  let returns_no_nan = Cairos.Series.slice ~start:1 ~stop:len returns in
+  Cairos_finance.max_drawdown returns_no_nan
+
+let validate_max_drawdown_normal () =
+  validate_metric ~tolerance:1e-12 ~metric:"max_drawdown" ~series_name:"normal"
+    ~compute:max_drawdown_compute ()
+
+let validate_max_drawdown_drawdown () =
+  validate_metric ~tolerance:1e-12 ~metric:"max_drawdown"
+    ~series_name:"drawdown" ~compute:max_drawdown_compute ()
+
+let validate_max_drawdown_flat () =
+  validate_metric ~tolerance:1e-12 ~metric:"max_drawdown" ~series_name:"flat"
+    ~compute:max_drawdown_compute ()
+
+let validate_max_drawdown_extreme () =
+  validate_metric ~tolerance:1e-12 ~metric:"max_drawdown" ~series_name:"extreme"
+    ~compute:max_drawdown_compute ()
+
+let validate_drawdown_series_normal () =
+  validate_series_metric ~metric:"drawdown_series" ~series_name:"normal"
+    ~tolerance:1e-12 ~compute:Cairos_finance.drawdown_series ()
+
+let validate_drawdown_series_drawdown () =
+  validate_series_metric ~metric:"drawdown_series" ~series_name:"drawdown"
+    ~tolerance:1e-12 ~compute:Cairos_finance.drawdown_series ()
+
+let validate_drawdown_series_flat () =
+  validate_series_metric ~metric:"drawdown_series" ~series_name:"flat"
+    ~tolerance:1e-12 ~compute:Cairos_finance.drawdown_series ()
+
+let validate_drawdown_series_extreme () =
+  validate_series_metric ~metric:"drawdown_series" ~series_name:"extreme"
+    ~tolerance:1e-12 ~compute:Cairos_finance.drawdown_series ()
+
 let () =
   Alcotest.run "cross_validate"
     [
@@ -351,5 +508,26 @@ let () =
           Alcotest.test_case "flat vs Pandas" `Quick validate_sharpe_rf4_flat;
           Alcotest.test_case "extreme vs Pandas" `Quick
             validate_sharpe_rf4_extreme;
+        ] );
+      ( "max_drawdown",
+        [
+          Alcotest.test_case "normal vs Pandas" `Quick
+            validate_max_drawdown_normal;
+          Alcotest.test_case "drawdown vs Pandas" `Quick
+            validate_max_drawdown_drawdown;
+          Alcotest.test_case "flat vs Pandas" `Quick validate_max_drawdown_flat;
+          Alcotest.test_case "extreme vs Pandas" `Quick
+            validate_max_drawdown_extreme;
+        ] );
+      ( "drawdown_series",
+        [
+          Alcotest.test_case "normal vs Pandas" `Quick
+            validate_drawdown_series_normal;
+          Alcotest.test_case "drawdown vs Pandas" `Quick
+            validate_drawdown_series_drawdown;
+          Alcotest.test_case "flat vs Pandas" `Quick
+            validate_drawdown_series_flat;
+          Alcotest.test_case "extreme vs Pandas" `Quick
+            validate_drawdown_series_extreme;
         ] );
     ]

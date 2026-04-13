@@ -92,3 +92,44 @@ let sharpe ~(risk_free : float)
   let n, mean, std = sample_mean_std_skipna excess in
   if n < 2 || Float.equal std 0.0 then Float.nan
   else mean /. std *. Float.sqrt ann_factor
+
+(* Internal helper — drawdown over a NaN-free returns array.
+   Single-pass loop threading wealth and peak scalars.
+   Not exposed in the .mli. *)
+let drawdown_array (returns : float array) : float array =
+  let n = Array.length returns in
+  if n = 0 then [||]
+  else
+    let out = Array.make n 0.0 in
+    let wealth = ref (1.0 +. returns.(0)) in
+    let peak = ref !wealth in
+    out.(0) <- (!wealth -. !peak) /. !peak;
+    for i = 1 to n - 1 do
+      wealth := !wealth *. (1.0 +. returns.(i));
+      if !wealth > !peak then peak := !wealth;
+      out.(i) <- (!wealth -. !peak) /. !peak
+    done;
+    out
+
+let drawdown_series (returns : ('freq, (float, 'b) Nx.t) Cairos.Series.t) :
+    ('freq, (float, Bigarray.float64_elt) Nx.t) Cairos.Series.t =
+  let arr = Nx.to_array (Cairos.Series.values returns) in
+  let dd_arr = drawdown_array arr in
+  let dd_nx = Nx.create Nx.float64 [| Array.length dd_arr |] dd_arr in
+  Cairos.Series.make_unsafe (Cairos.Series.index returns) dd_nx
+
+let max_drawdown (returns : ('freq, (float, 'b) Nx.t) Cairos.Series.t) : float =
+  let arr = Nx.to_array (Cairos.Series.values returns) in
+  let n = Array.length arr in
+  if n = 0 then 0.0
+  else
+    let wealth = ref (1.0 +. arr.(0)) in
+    let peak = ref !wealth in
+    let min_dd = ref 0.0 in
+    for i = 1 to n - 1 do
+      wealth := !wealth *. (1.0 +. arr.(i));
+      if !wealth > !peak then peak := !wealth;
+      let dd = (!wealth -. !peak) /. !peak in
+      if dd < !min_dd then min_dd := dd
+    done;
+    Float.abs !min_dd
