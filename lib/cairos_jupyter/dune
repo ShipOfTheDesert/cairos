@@ -1,0 +1,5 @@
+(library
+ (name cairos_jupyter)
+ (public_name cairos_jupyter)
+ (modes byte)
+ (libraries cairos_plot jupyter.notebook))

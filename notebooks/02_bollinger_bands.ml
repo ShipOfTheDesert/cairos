@@ -31,6 +31,14 @@
 #load "stdlib.cma"
 
 #require "cairos"
+#require "cairos_finance"
+#require "cairos_plot"
+
+(* %% *)
+(* cairos_jupyter transitively requires jupyter.notebook, which the kernel
+   crashes on if bundled with other #require directives — so it gets its
+   own cell. *)
+#require "cairos_jupyter"
 
 (* %% *)
 open Cairos
@@ -274,7 +282,43 @@ let () =
   Notebook_helpers.pp_describe band_frame
 
 (* %% [markdown] *)
-(* ## Next Steps *)
+(* ## Financial Metrics *)
 (* *)
-(* TODO(e02-finance): Compute percent B and bandwidth from Bollinger Bands *)
-(* TODO(e03-plot): Add band overlay chart with price, upper, and lower bands *)
+(* Compute daily returns, then derive annualised return, annualised vol, *)
+(* Sharpe ratio, max drawdown, and the drawdown series. *)
+
+(* %% *)
+let returns =
+  Series.pct_change prices |> fun r ->
+  Series.slice ~start:1 ~stop:(Series.length r) r
+
+let () =
+  Printf.printf "Annualised return: %.4f\n"
+    (Cairos_finance.annualised_return returns);
+  Printf.printf "Annualised vol:    %.4f\n"
+    (Cairos_finance.annualised_vol returns);
+  Printf.printf "Sharpe ratio:      %.4f\n"
+    (Cairos_finance.sharpe ~risk_free:0.0 returns);
+  Printf.printf "Max drawdown:      %.4f\n"
+    (Cairos_finance.max_drawdown returns)
+
+(* %% *)
+let dd = Cairos_finance.drawdown_series returns
+
+let () = Notebook_helpers.pp_series "drawdown" dd
+
+(* %% [markdown] *)
+(* ## Charts *)
+(* *)
+(* Plot the price series as a line chart and the drawdown series as a *)
+(* drawdown chart. Band overlay is out of scope for the PoC. *)
+
+(* %% *)
+let () =
+  Cairos_plot.line_chart ~title:"Bollinger Bands — Price" prices
+  |> Cairos_jupyter.display
+
+(* %% *)
+let () =
+  Cairos_plot.drawdown_chart ~title:"Bollinger Bands — Drawdown" dd
+  |> Cairos_jupyter.display

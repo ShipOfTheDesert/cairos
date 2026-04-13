@@ -1,0 +1,25 @@
+[
+  {
+    "url": "https://github.com/ShipOfTheDesert/nopal.git",
+    "commit": "734b9c06144c5cd1e96dca7a76e1c851c7a77c1a",
+    "packages": [
+      "nopal",
+      "nopal_charts",
+      "nopal_draw",
+      "nopal_element",
+      "nopal_examples",
+      "nopal_http",
+      "nopal_http_web",
+      "nopal_mvu",
+      "nopal_router",
+      "nopal_runtime",
+      "nopal_scene",
+      "nopal_style",
+      "nopal_svg",
+      "nopal_tauri",
+      "nopal_test",
+      "nopal_ui",
+      "nopal_web"
+    ]
+  }
+]

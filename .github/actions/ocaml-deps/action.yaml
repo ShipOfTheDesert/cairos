@@ -21,6 +21,10 @@ runs:
           opam update
         shell: bash
 
+    - name: Apply opam pins
+      shell: bash
+      run: just pin
+
     - name: Install dependencies
       uses: nick-fields/retry@v3
       with:

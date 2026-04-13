@@ -1,4 +1,18 @@
-default: build test fmt lint validate notebooks
+default: pin build test fmt lint validate notebooks
+
+pin:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    for row in $(jq -c '.[]' pins.json); do
+        url=$(jq -r '.url' <<< "$row")
+        commit=$(jq -r '.commit' <<< "$row")
+        for pkg in $(jq -r '.packages[]' <<< "$row"); do
+            opam pin add -n "$pkg" "${url}#${commit}"
+        done
+    done
+
+deps: pin
+    opam install --deps-only -y .
 
 build:
     opam exec -- dune build
