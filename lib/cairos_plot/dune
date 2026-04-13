@@ -1,0 +1,11 @@
+(library
+ (name cairos_plot)
+ (public_name cairos_plot)
+ (libraries
+  cairos
+  nopal_svg
+  nopal_scene
+  nopal_draw
+  nopal_style
+  nopal_charts
+  ptime))

@@ -1,5 +1,14 @@
 open Cairos
 
+(* The ocaml-jupyter kernel captures stdout through a pipe, which makes OCaml
+   default to full buffering — Printf output never flushes to the cell without
+   an explicit [flush stdout]. Disabling buffering here fixes this globally so
+   every write to stdout (from Printf, print_endline, the pp_* helpers below,
+   and user notebook code) reaches the kernel immediately. See the .mli for
+   how to undo this in a specific notebook if needed. *)
+let () = Out_channel.set_buffered stdout false
+let display svg = ignore (Jupyter_notebook.display "image/svg+xml" svg)
+
 let pp_series ?(n = 3) name s =
   let len = Series.length s in
   Printf.printf "%s: length=%d\n" name len;
@@ -50,6 +59,6 @@ let pp_describe frame =
   Printf.printf "%s\n" (String.make 77 '-');
   List.iter
     (fun (name, (s : Frame.column_stats)) ->
-      Printf.printf "%-12s %5d %8.2f %8.2f %8.2f %8.2f %8.2f %8.2f %8.2f\n"
-        name s.count s.mean s.std s.min s.p25 s.median s.p75 s.max)
+      Printf.printf "%-12s %5d %8.2f %8.2f %8.2f %8.2f %8.2f %8.2f %8.2f\n" name
+        s.count s.mean s.std s.min s.p25 s.median s.p75 s.max)
     stats

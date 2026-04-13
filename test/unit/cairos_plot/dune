@@ -1,0 +1,5 @@
+(test
+ (name test_plot)
+ (package cairos_plot)
+ (modules test_plot)
+ (libraries test_helpers cairos cairos_plot nopal_scene nx ptime alcotest))

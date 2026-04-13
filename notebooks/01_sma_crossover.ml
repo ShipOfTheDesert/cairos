@@ -9,8 +9,8 @@
 (*       format_version: '1.3' *)
 (*       jupytext_version: 1.19.1 *)
 (*   kernelspec: *)
-(*     display_name: OCaml *)
-(*     language: ocaml *)
+(*     display_name: OCaml /home/valdev/personal/shipofthedesert/cairos *)
+(*     language: OCaml *)
 (*     name: ocaml-jupyter *)
 (* --- *)
 
@@ -33,11 +33,17 @@
 #load "stdlib.cma"
 
 #require "cairos"
+#require "cairos_finance"
+#require "cairos_plot"
+
+(* %% vscode={"languageId": "ocaml"} *)
+(* cairos_jupyter transitively requires jupyter.notebook, which the kernel
+   crashes on if bundled with other #require directives — so it gets its
+   own cell. *)
+#require "cairos_jupyter"
 
 (* %% vscode={"languageId": "ocaml"} *)
 open Cairos
-
-#mod_use "notebook_helpers.ml"
 
 let ( let* ) = Result.bind
 
@@ -185,7 +191,7 @@ let prices =
   | Ok s -> s
   | Error e -> failwith (Printf.sprintf "Price series construction failed: %s" e)
 
-let () = Notebook_helpers.pp_series "prices" prices
+let () = Cairos_jupyter.pp_series "prices" prices
 
 (* %% [markdown] *)
 (* ## Computing SMAs *)
@@ -197,8 +203,8 @@ let sma_20 = Window.sma ~n:20 prices
 let sma_50 = Window.sma ~n:50 prices
 
 let () =
-  Notebook_helpers.pp_first_valid "SMA-20" sma_20;
-  Notebook_helpers.pp_first_valid "SMA-50" sma_50
+  Cairos_jupyter.pp_first_valid "SMA-20" sma_20;
+  Cairos_jupyter.pp_first_valid "SMA-50" sma_50
 
 (* %% [markdown] *)
 (* ## Aligning the Two SMAs *)
@@ -215,7 +221,7 @@ let aligned_smas =
 
 let spread = Align.map2 (fun a b -> a -. b) aligned_smas
 
-let () = Notebook_helpers.pp_series ~n:5 "spread" spread
+let () = Cairos_jupyter.pp_series ~n:5 "spread" spread
 
 (* %% [markdown] *)
 (* ## Resampling to Weekly *)
@@ -229,7 +235,7 @@ let weekly_prices =
   | Ok w -> w
   | Error e -> failwith (Printf.sprintf "Resample failed: %s" e)
 
-let () = Notebook_helpers.pp_series ~n:5 "weekly_prices" weekly_prices
+let () = Cairos_jupyter.pp_series ~n:5 "weekly_prices" weekly_prices
 
 (* %% [markdown] *)
 (* ## Grouping into a Frame *)
@@ -247,7 +253,7 @@ let frame =
   | Ok f -> f
   | Error e -> failwith (Printf.sprintf "Frame construction failed: %s" e)
 
-let () = Notebook_helpers.pp_frame frame
+let () = Cairos_jupyter.pp_frame frame
 
 (* %% [markdown] *)
 (* ## Inspecting Series and Frame *)
@@ -259,29 +265,64 @@ let () = Notebook_helpers.pp_frame frame
 (* %% vscode={"languageId": "ocaml"} *)
 let () =
   Printf.printf "--- Series.head / tail ---\n";
-  Notebook_helpers.pp_series ~n:5 "prices (head 5)" (Series.head 5 prices);
-  Notebook_helpers.pp_series ~n:5 "prices (tail 5)" (Series.tail 5 prices)
+  Cairos_jupyter.pp_series ~n:5 "prices (head 5)" (Series.head 5 prices);
+  Cairos_jupyter.pp_series ~n:5 "prices (tail 5)" (Series.tail 5 prices)
 
 (* %% vscode={"languageId": "ocaml"} *)
 let () =
   Printf.printf "--- Series.first_valid ---\n";
-  Notebook_helpers.pp_first_valid "SMA-20" sma_20;
-  Notebook_helpers.pp_first_valid "SMA-50" sma_50;
-  Notebook_helpers.pp_first_valid "spread" spread
+  Cairos_jupyter.pp_first_valid "SMA-20" sma_20;
+  Cairos_jupyter.pp_first_valid "SMA-50" sma_50;
+  Cairos_jupyter.pp_first_valid "spread" spread
 
 (* %% vscode={"languageId": "ocaml"} *)
 let () =
   Printf.printf "--- Frame.head 5 ---\n";
-  Notebook_helpers.pp_frame ~n:5 (Frame.head 5 frame)
+  Cairos_jupyter.pp_frame ~n:5 (Frame.head 5 frame)
 
 (* %% vscode={"languageId": "ocaml"} *)
 let () =
   Printf.printf "--- Frame.describe ---\n";
-  Notebook_helpers.pp_describe frame
+  Cairos_jupyter.pp_describe frame
 
 (* %% [markdown] *)
-(* ## Next Steps *)
+(* ## Financial Metrics *)
 (* *)
-(* TODO(e02-finance): Compute Sharpe ratio from daily returns here *)
-(* TODO(e02-finance): Add maximum drawdown calculation *)
-(* TODO(e03-plot): Add line chart of price vs SMA crossover *)
+(* Compute daily returns, then derive annualised return, annualised vol, *)
+(* Sharpe ratio, max drawdown, and the drawdown series. *)
+
+(* %% vscode={"languageId": "ocaml"} *)
+let returns =
+  Series.pct_change prices |> fun r ->
+  Series.slice ~start:1 ~stop:(Series.length r) r
+
+let () =
+  Printf.printf "Annualised return: %.4f\n"
+    (Cairos_finance.annualised_return returns);
+  Printf.printf "Annualised vol:    %.4f\n"
+    (Cairos_finance.annualised_vol returns);
+  Printf.printf "Sharpe ratio:      %.4f\n"
+    (Cairos_finance.sharpe ~risk_free:0.0 returns);
+  Printf.printf "Max drawdown:      %.4f\n"
+    (Cairos_finance.max_drawdown returns);
+
+(* %% vscode={"languageId": "ocaml"} *)
+let dd = Cairos_finance.drawdown_series returns
+
+let () = Cairos_jupyter.pp_series "drawdown" dd
+
+(* %% [markdown] *)
+(* ## Charts *)
+(* *)
+(* Plot the price series as a line chart and the drawdown series as a *)
+(* drawdown chart. *)
+
+(* %% vscode={"languageId": "ocaml"} *)
+let () =
+  Cairos_plot.line_chart ~title:"SMA Crossover — Price" prices
+  |> Cairos_jupyter.display
+
+(* %% vscode={"languageId": "ocaml"} *)
+let () =
+  Cairos_plot.drawdown_chart ~title:"SMA Crossover — Drawdown" dd
+  |> Cairos_jupyter.display

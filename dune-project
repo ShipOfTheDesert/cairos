@@ -50,3 +50,35 @@
   cairos
   ocaml
   (alcotest :with-test)))
+
+(package
+ (name cairos_plot)
+ (synopsis "SVG chart rendering for Cairos time-series")
+ (description
+  "Line and drawdown charts via Nopal scene trees, emitted as pure SVG strings")
+ (depends
+  cairos
+  nopal_svg
+  nopal_scene
+  nopal_draw
+  nopal_style
+  nopal_charts
+  ocaml
+  (fmt
+   (and
+    (>= 0.11.0)
+    :with-test))
+  (nx
+   (and
+    (>= 1.0.0~alpha2)
+    :with-test))
+  (ptime
+   (>= 1.2.0))
+  (alcotest :with-test)))
+
+(package
+ (name cairos_jupyter)
+ (synopsis "Jupyter notebook adapter for Cairos")
+ (description
+  "Bytecode-only adapter that renders Cairos_plot SVG output inline in Jupyter cells and provides pretty-printers for Cairos.Series and Cairos.Frame values")
+ (depends cairos cairos_plot nx jupyter ocaml))

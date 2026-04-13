@@ -15,5 +15,6 @@
 
 (test
  (name test_metrics)
+ (package cairos_finance)
  (modules test_metrics)
  (libraries finance_test_helpers cairos cairos_finance nx alcotest))

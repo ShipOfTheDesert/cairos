@@ -5,30 +5,36 @@
 
 (test
  (name test_index)
+ (package cairos)
  (modules test_index)
  (libraries test_helpers cairos nx ptime fmt alcotest))
 
 (test
  (name test_series)
+ (package cairos)
  (modules test_series)
  (libraries test_helpers cairos nx ptime fmt alcotest))
 
 (test
  (name test_align)
+ (package cairos)
  (modules test_align)
  (libraries test_helpers cairos nx ptime fmt alcotest))
 
 (test
  (name test_window)
+ (package cairos)
  (modules test_window)
  (libraries test_helpers cairos nx ptime fmt alcotest))
 
 (test
  (name test_resample)
+ (package cairos)
  (modules test_resample)
  (libraries test_helpers cairos nx ptime fmt alcotest))
 
 (test
  (name test_frame)
+ (package cairos)
  (modules test_frame)
  (libraries test_helpers cairos nx ptime fmt alcotest))

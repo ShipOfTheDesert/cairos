@@ -23,12 +23,21 @@ jobs:
     steps:
       - name: Checkout tree
         uses: actions/checkout@v6
+      - uses: extractions/setup-just@v3
+        with:
+          just-version: '1.46.0'
       - name: Set-up OCaml
         uses: ocaml/setup-ocaml@v3
         with:
           ocaml-compiler: 5.3.0
           dune-cache: true
           cache-prefix: v1
+          # Skip automatic local-package pin/install — `just pin` below
+          # must run first so pinned deps (e.g. nopal_svg) resolve.
+          opam-local-packages: ""
+      - name: Apply opam pins
+        shell: bash
+        run: just pin
 
       - name: Install dependencies
         uses: nick-fields/retry@v3
@@ -47,12 +56,21 @@ jobs:
     steps:
       - name: Checkout tree
         uses: actions/checkout@v6
+      - uses: extractions/setup-just@v3
+        with:
+          just-version: '1.46.0'
       - name: Set-up OCaml
         uses: ocaml/setup-ocaml@v3
         with:
           ocaml-compiler: 5.3.0
           dune-cache: true
           cache-prefix: v1
+          # Skip automatic local-package pin/install — `just pin` below
+          # must run first so pinned deps (e.g. nopal_svg) resolve.
+          opam-local-packages: ""
+      - name: Apply opam pins
+        shell: bash
+        run: just pin
 
       - name: Install dependencies
         uses: nick-fields/retry@v3
@@ -71,12 +89,21 @@ jobs:
     steps:
       - name: Checkout tree
         uses: actions/checkout@v6
+      - uses: extractions/setup-just@v3
+        with:
+          just-version: '1.46.0'
       - name: Set-up OCaml
         uses: ocaml/setup-ocaml@v3
         with:
           ocaml-compiler: 5.3.0
           dune-cache: true
           cache-prefix: v1
+          # Skip automatic local-package pin/install — `just pin` below
+          # must run first so pinned deps (e.g. nopal_svg) resolve.
+          opam-local-packages: ""
+      - name: Apply opam pins
+        shell: bash
+        run: just pin
 
       - name: Install dependencies
         uses: nick-fields/retry@v3

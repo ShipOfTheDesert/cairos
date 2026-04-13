@@ -31,11 +31,17 @@
 #load "stdlib.cma"
 
 #require "cairos"
+#require "cairos_finance"
+#require "cairos_plot"
+
+(* %% *)
+(* cairos_jupyter transitively requires jupyter.notebook, which the kernel
+   crashes on if bundled with other #require directives — so it gets its
+   own cell. *)
+#require "cairos_jupyter"
 
 (* %% *)
 open Cairos
-
-#mod_use "notebook_helpers.ml"
 
 let ( let* ) = Result.bind
 
@@ -184,7 +190,7 @@ let prices =
   | Error e ->
       failwith (Printf.sprintf "Price series construction failed: %s" e)
 
-let () = Notebook_helpers.pp_series "prices" prices
+let () = Cairos_jupyter.pp_series "prices" prices
 
 (* %% [markdown] *)
 (* ## Rolling Statistics *)
@@ -197,8 +203,8 @@ let sma_20 = Window.sma ~n:20 prices
 let std_20 = Window.rolling_std ~n:20 prices
 
 let () =
-  Notebook_helpers.pp_first_valid "SMA-20" sma_20;
-  Notebook_helpers.pp_first_valid "Std-20" std_20
+  Cairos_jupyter.pp_first_valid "SMA-20" sma_20;
+  Cairos_jupyter.pp_first_valid "Std-20" std_20
 
 (* %% [markdown] *)
 (* ## Constructing Bollinger Bands *)
@@ -217,8 +223,8 @@ let upper_band = Align.map2 (fun a b -> a +. (2.0 *. b)) aligned_stats
 let lower_band = Align.map2 (fun a b -> a -. (2.0 *. b)) aligned_stats
 
 let () =
-  Notebook_helpers.pp_series ~n:5 "upper_band" upper_band;
-  Notebook_helpers.pp_series ~n:5 "lower_band" lower_band
+  Cairos_jupyter.pp_series ~n:5 "upper_band" upper_band;
+  Cairos_jupyter.pp_series ~n:5 "lower_band" lower_band
 
 (* %% [markdown] *)
 (* ## Shifted Price for Comparison *)
@@ -246,14 +252,14 @@ let () =
 (* %% *)
 let () =
   Printf.printf "--- Series.head / tail ---\n";
-  Notebook_helpers.pp_series ~n:5 "upper (head 5)" (Series.head 5 upper_band);
-  Notebook_helpers.pp_series ~n:5 "lower (tail 5)" (Series.tail 5 lower_band)
+  Cairos_jupyter.pp_series ~n:5 "upper (head 5)" (Series.head 5 upper_band);
+  Cairos_jupyter.pp_series ~n:5 "lower (tail 5)" (Series.tail 5 lower_band)
 
 (* %% *)
 let () =
   Printf.printf "--- Series.first_valid ---\n";
-  Notebook_helpers.pp_first_valid "upper_band" upper_band;
-  Notebook_helpers.pp_first_valid "lower_band" lower_band
+  Cairos_jupyter.pp_first_valid "upper_band" upper_band;
+  Cairos_jupyter.pp_first_valid "lower_band" lower_band
 
 (* %% *)
 let band_frame =
@@ -271,10 +277,46 @@ let band_frame =
 
 let () =
   Printf.printf "--- Frame.describe ---\n";
-  Notebook_helpers.pp_describe band_frame
+  Cairos_jupyter.pp_describe band_frame
 
 (* %% [markdown] *)
-(* ## Next Steps *)
+(* ## Financial Metrics *)
 (* *)
-(* TODO(e02-finance): Compute percent B and bandwidth from Bollinger Bands *)
-(* TODO(e03-plot): Add band overlay chart with price, upper, and lower bands *)
+(* Compute daily returns, then derive annualised return, annualised vol, *)
+(* Sharpe ratio, max drawdown, and the drawdown series. *)
+
+(* %% *)
+let returns =
+  Series.pct_change prices |> fun r ->
+  Series.slice ~start:1 ~stop:(Series.length r) r
+
+let () =
+  Printf.printf "Annualised return: %.4f\n"
+    (Cairos_finance.annualised_return returns);
+  Printf.printf "Annualised vol:    %.4f\n"
+    (Cairos_finance.annualised_vol returns);
+  Printf.printf "Sharpe ratio:      %.4f\n"
+    (Cairos_finance.sharpe ~risk_free:0.0 returns);
+  Printf.printf "Max drawdown:      %.4f\n"
+    (Cairos_finance.max_drawdown returns)
+
+(* %% *)
+let dd = Cairos_finance.drawdown_series returns
+
+let () = Cairos_jupyter.pp_series "drawdown" dd
+
+(* %% [markdown] *)
+(* ## Charts *)
+(* *)
+(* Plot the price series as a line chart and the drawdown series as a *)
+(* drawdown chart. Band overlay is out of scope for the PoC. *)
+
+(* %% *)
+let () =
+  Cairos_plot.line_chart ~title:"Bollinger Bands — Price" prices
+  |> Cairos_jupyter.display
+
+(* %% *)
+let () =
+  Cairos_plot.drawdown_chart ~title:"Bollinger Bands — Drawdown" dd
+  |> Cairos_jupyter.display
