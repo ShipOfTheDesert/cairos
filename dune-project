@@ -73,9 +73,7 @@
     (>= 1.0.0~alpha2)
     :with-test))
   (ptime
-   (and
-    (>= 1.2.0)
-    :with-test))
+   (>= 1.2.0))
   (alcotest :with-test)))
 
 (package
@@ -83,7 +81,4 @@
  (synopsis "Jupyter notebook adapter for Cairos plot")
  (description
   "Bytecode-only adapter that renders Cairos_plot SVG output inline in Jupyter cells via jupyter.notebook")
- (depends
-  cairos_plot
-  jupyter
-  ocaml))
+ (depends cairos_plot jupyter ocaml))

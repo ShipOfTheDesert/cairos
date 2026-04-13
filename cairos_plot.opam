@@ -20,7 +20,7 @@ depends: [
   "ocaml"
   "fmt" {>= "0.11.0" & with-test}
   "nx" {>= "1.0.0~alpha2" & with-test}
-  "ptime" {>= "1.2.0" & with-test}
+  "ptime" {>= "1.2.0"}
   "alcotest" {with-test}
   "odoc" {with-doc}
 ]
