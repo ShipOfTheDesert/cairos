@@ -11,6 +11,9 @@ runs:
         dune-cache: true
         dune-cache-prefix: v1
         opam-disable-sandboxing: true
+        # Skip automatic local-package pin/install — our `just pin` step
+        # below must run first so pinned deps (e.g. nopal_svg) resolve.
+        opam-local-packages: ""
 
     - name: Update opam
       uses: nick-fields/retry@v3
