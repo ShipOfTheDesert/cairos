@@ -49,11 +49,18 @@ validate:
 
 # Soft-skips when jupytext/papermill are absent so `just` passes on machines
 # without the Jupyter toolchain. CI must install both to enforce notebook execution.
+#
+# `dune install` is required before papermill runs: the ocaml-jupyter kernel
+# resolves `#require "cairos_jupyter"` (and friends) through findlib in the
+# opam switch prefix, not from the local _build tree. Without an install step,
+# API changes in cairos_plot / cairos_jupyter show up as "Unbound value" errors
+# in notebook cells even though `just build` passes.
 notebooks:
     #!/usr/bin/env bash
     set -euo pipefail
     command -v jupytext >/dev/null || { echo "jupytext not installed, skipping notebooks"; exit 0; }
     command -v papermill >/dev/null || { echo "papermill not installed, skipping notebooks"; exit 0; }
+    opam exec -- dune install cairos cairos_finance cairos_plot cairos_jupyter
     mkdir -p _build/notebooks
     for nb in notebooks/[0-9]*.ml; do
         base=$(basename "$nb" .ml)

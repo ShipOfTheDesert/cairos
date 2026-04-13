@@ -82,12 +82,35 @@ let drawdown_chart_y_axis_includes_zero () =
   let dd_values = [| 0.0; -0.05; -0.10; -0.03; -0.15 |] in
   let s = Test_helpers.make_daily_series dates dd_values in
   let svg = Cairos_plot.drawdown_chart s in
-  let has_zero =
-    string_contains svg ">0.0%<"
-    || string_contains svg ">0%<"
-    || string_contains svg ">0<"
+  Alcotest.(check bool)
+    "zero baseline tick label" true
+    (string_contains svg ">0.0%<")
+
+let hourly_dates =
+  [|
+    "2024-01-01T10:00:00Z";
+    "2024-01-01T11:00:00Z";
+    "2024-01-01T12:00:00Z";
+    "2024-01-01T13:00:00Z";
+    "2024-01-01T14:00:00Z";
+  |]
+
+let hourly_expected_labels =
+  [|
+    "2024-01-01 10:00";
+    "2024-01-01 11:00";
+    "2024-01-01 12:00";
+    "2024-01-01 13:00";
+    "2024-01-01 14:00";
+  |]
+
+let line_chart_renders_hourly_timestamp_labels () =
+  let s = Test_helpers.make_hourly_series hourly_dates values in
+  let svg = Cairos_plot.line_chart s in
+  let has_any =
+    Array.exists (fun label -> string_contains svg label) hourly_expected_labels
   in
-  Alcotest.(check bool) "zero baseline tick label" true has_zero
+  Alcotest.(check bool) "at least one hourly label" true has_any
 
 let () =
   Alcotest.run "cairos_plot"
@@ -99,6 +122,8 @@ let () =
           Alcotest.test_case "renders title" `Quick line_chart_renders_title;
           Alcotest.test_case "renders timestamp labels" `Quick
             line_chart_renders_timestamp_labels;
+          Alcotest.test_case "renders hourly timestamp labels" `Quick
+            line_chart_renders_hourly_timestamp_labels;
         ] );
       ( "drawdown_chart",
         [

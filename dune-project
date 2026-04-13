@@ -78,7 +78,7 @@
 
 (package
  (name cairos_jupyter)
- (synopsis "Jupyter notebook adapter for Cairos plot")
+ (synopsis "Jupyter notebook adapter for Cairos")
  (description
-  "Bytecode-only adapter that renders Cairos_plot SVG output inline in Jupyter cells via jupyter.notebook")
- (depends cairos_plot jupyter ocaml))
+  "Bytecode-only adapter that renders Cairos_plot SVG output inline in Jupyter cells and provides pretty-printers for Cairos.Series and Cairos.Frame values")
+ (depends cairos cairos_plot nx jupyter ocaml))

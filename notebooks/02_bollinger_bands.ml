@@ -43,8 +43,6 @@
 (* %% *)
 open Cairos
 
-#mod_use "notebook_helpers.ml"
-
 let ( let* ) = Result.bind
 
 (* %% [markdown] *)
@@ -192,7 +190,7 @@ let prices =
   | Error e ->
       failwith (Printf.sprintf "Price series construction failed: %s" e)
 
-let () = Notebook_helpers.pp_series "prices" prices
+let () = Cairos_jupyter.pp_series "prices" prices
 
 (* %% [markdown] *)
 (* ## Rolling Statistics *)
@@ -205,8 +203,8 @@ let sma_20 = Window.sma ~n:20 prices
 let std_20 = Window.rolling_std ~n:20 prices
 
 let () =
-  Notebook_helpers.pp_first_valid "SMA-20" sma_20;
-  Notebook_helpers.pp_first_valid "Std-20" std_20
+  Cairos_jupyter.pp_first_valid "SMA-20" sma_20;
+  Cairos_jupyter.pp_first_valid "Std-20" std_20
 
 (* %% [markdown] *)
 (* ## Constructing Bollinger Bands *)
@@ -225,8 +223,8 @@ let upper_band = Align.map2 (fun a b -> a +. (2.0 *. b)) aligned_stats
 let lower_band = Align.map2 (fun a b -> a -. (2.0 *. b)) aligned_stats
 
 let () =
-  Notebook_helpers.pp_series ~n:5 "upper_band" upper_band;
-  Notebook_helpers.pp_series ~n:5 "lower_band" lower_band
+  Cairos_jupyter.pp_series ~n:5 "upper_band" upper_band;
+  Cairos_jupyter.pp_series ~n:5 "lower_band" lower_band
 
 (* %% [markdown] *)
 (* ## Shifted Price for Comparison *)
@@ -254,14 +252,14 @@ let () =
 (* %% *)
 let () =
   Printf.printf "--- Series.head / tail ---\n";
-  Notebook_helpers.pp_series ~n:5 "upper (head 5)" (Series.head 5 upper_band);
-  Notebook_helpers.pp_series ~n:5 "lower (tail 5)" (Series.tail 5 lower_band)
+  Cairos_jupyter.pp_series ~n:5 "upper (head 5)" (Series.head 5 upper_band);
+  Cairos_jupyter.pp_series ~n:5 "lower (tail 5)" (Series.tail 5 lower_band)
 
 (* %% *)
 let () =
   Printf.printf "--- Series.first_valid ---\n";
-  Notebook_helpers.pp_first_valid "upper_band" upper_band;
-  Notebook_helpers.pp_first_valid "lower_band" lower_band
+  Cairos_jupyter.pp_first_valid "upper_band" upper_band;
+  Cairos_jupyter.pp_first_valid "lower_band" lower_band
 
 (* %% *)
 let band_frame =
@@ -279,7 +277,7 @@ let band_frame =
 
 let () =
   Printf.printf "--- Frame.describe ---\n";
-  Notebook_helpers.pp_describe band_frame
+  Cairos_jupyter.pp_describe band_frame
 
 (* %% [markdown] *)
 (* ## Financial Metrics *)
@@ -305,7 +303,7 @@ let () =
 (* %% *)
 let dd = Cairos_finance.drawdown_series returns
 
-let () = Notebook_helpers.pp_series "drawdown" dd
+let () = Cairos_jupyter.pp_series "drawdown" dd
 
 (* %% [markdown] *)
 (* ## Charts *)

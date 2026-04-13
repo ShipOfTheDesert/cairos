@@ -100,15 +100,16 @@ let line_chart ?title ?(width = default_width) ?(height = default_height) series
     =
   let values = Cairos.Series.values series in
   let n = Cairos.Series.length series in
-  let data_min = ref infinity in
-  let data_max = ref neg_infinity in
-  for i = 0 to n - 1 do
-    let v = Nx.item [ i ] values in
-    if v < !data_min then data_min := v;
-    if v > !data_max then data_max := v
-  done;
+  let indices = Array.init n Fun.id in
+  let data_min, data_max =
+    Array.fold_left
+      (fun (lo, hi) i ->
+        let v = Nx.item [ i ] values in
+        (Float.min lo v, Float.max hi v))
+      (infinity, neg_infinity) indices
+  in
   let color = Nopal_scene.Color.categorical.(0) in
-  build_chart ~title ~width ~height ~y_domain:(!data_min, !data_max)
+  build_chart ~title ~width ~height ~y_domain:(data_min, data_max)
     ~y_format:(Printf.sprintf "%.2f") series
     ~data_scenes:(fun ~y_scale:_ coords ->
       let points = Array.to_list coords in
@@ -121,14 +122,15 @@ let drawdown_chart ?title ?(width = default_width) ?(height = default_height)
     series =
   let values = Cairos.Series.values series in
   let n = Cairos.Series.length series in
-  let data_min = ref 0.0 in
-  for i = 0 to n - 1 do
-    let v = Nx.item [ i ] values in
-    if v < !data_min then data_min := v
-  done;
+  let indices = Array.init n Fun.id in
+  let data_min =
+    Array.fold_left
+      (fun lo i -> Float.min lo (Nx.item [ i ] values))
+      0.0 indices
+  in
   let color = Nopal_scene.Color.categorical.(0) in
   let fill_color = { color with a = 0.6 } in
-  build_chart ~title ~width ~height ~y_domain:(!data_min, 0.0)
+  build_chart ~title ~width ~height ~y_domain:(data_min, 0.0)
     ~y_format:(fun v ->
       let pct = v *. 100.0 in
       let pct = if Float.abs pct < 1e-10 then 0.0 else pct in
