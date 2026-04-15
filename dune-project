@@ -28,7 +28,9 @@
   ocaml
   ptime
   nx
-  (alcotest :with-test)))
+  (alcotest :with-test)
+  (qcheck-core :with-test)
+  (qcheck-alcotest :with-test)))
 
 (package
  (name cairos_finance)

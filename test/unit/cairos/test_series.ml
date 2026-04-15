@@ -1,3 +1,90 @@
+let epoch_2024_01_01_utc = 1_704_067_200.0
+
+(* The two [failwith]s below are unreachable by construction (synthetic UTC
+   epoch + length-matched [Nx.t]) and are intentional per RFC 0030 §R4: a
+   generator must return [Series.t], not [(_, string) result]. Do not "fix"
+   by propagating [result] — that breaks the QCheck arbitrary contract. *)
+let make_daily_series_from_floats (xs : float array) :
+    ([ `Daily ], (float, Bigarray.float64_elt) Nx.t) Cairos.Series.t =
+  let n = Array.length xs in
+  let ts =
+    Array.init n (fun i -> epoch_2024_01_01_utc +. (float_of_int i *. 86_400.0))
+  in
+  let idx =
+    match Cairos.Index.of_unix_floats Cairos.Freq.Day ts with
+    | Ok i -> i
+    | Error e -> failwith ("generator index: " ^ e)
+  in
+  let values = Nx.create Nx.float64 [| n |] xs in
+  match Cairos.Series.make idx values with
+  | Ok s -> s
+  | Error e -> failwith ("generator series: " ^ e)
+
+let daily_float_series_arb :
+    ([ `Daily ], (float, Bigarray.float64_elt) Nx.t) Cairos.Series.t
+    QCheck.arbitrary =
+  let open QCheck in
+  let gen =
+    Gen.map make_daily_series_from_floats
+      (Gen.array_size (Gen.int_range 1 64) Gen.float)
+  in
+  let shrink s =
+    let arr = Nx.to_array (Cairos.Series.values s) in
+    let n = Array.length arr in
+    let open QCheck.Iter in
+    if n <= 1 then empty
+    else
+      let candidates =
+        List.sort_uniq compare [ 1; n / 2; n - 1 ]
+        |> List.filter (fun k -> k >= 1 && k < n)
+      in
+      of_list candidates >|= fun k ->
+      make_daily_series_from_floats (Array.sub arr 0 k)
+  in
+  make ~shrink
+    ~print:(fun s ->
+      Printf.sprintf "<daily series len=%d>" (Cairos.Series.length s))
+    gen
+
+let pct_change_preserves_length =
+  QCheck.Test.make ~count:200 ~name:"pct_change preserves series length"
+    daily_float_series_arb (fun s ->
+      Cairos.Series.length (Cairos.Series.pct_change s) = Cairos.Series.length s)
+
+let pct_change_index_zero_is_nan =
+  QCheck.Test.make ~count:200 ~name:"pct_change index 0 is nan"
+    daily_float_series_arb (fun s ->
+      let vs =
+        Nx.to_array (Cairos.Series.values (Cairos.Series.pct_change s))
+      in
+      Float.is_nan vs.(0))
+
+let pct_change_value_semantics =
+  let approx_eq a b =
+    if a = b then true
+    else if Float.is_finite a && Float.is_finite b then
+      let diff = Float.abs (a -. b) in
+      let scale = Float.max 1.0 (Float.max (Float.abs a) (Float.abs b)) in
+      diff <= 1e-12 *. scale
+    else false
+  in
+  QCheck.Test.make ~count:200
+    ~name:"pct_change i = (v_i - v_{i-1}) / v_{i-1} where finite and prev <> 0"
+    daily_float_series_arb (fun s ->
+      let vs = Nx.to_array (Cairos.Series.values s) in
+      let rs =
+        Nx.to_array (Cairos.Series.values (Cairos.Series.pct_change s))
+      in
+      let ok = ref true in
+      for i = 1 to Array.length vs - 1 do
+        let prev = vs.(i - 1) and curr = vs.(i) in
+        if Float.is_finite prev && Float.is_finite curr && prev <> 0.0 then
+          let expected = (curr -. prev) /. prev in
+          if Float.is_finite expected && not (approx_eq rs.(i) expected) then
+            ok := false
+      done;
+      !ok)
+
 let make_succeeds_with_matching_lengths () =
   match Cairos.Index.daily [| "2024-01-01"; "2024-01-02"; "2024-01-03" |] with
   | Error e -> Alcotest.fail e
@@ -462,6 +549,9 @@ let tests =
       first_valid_returns_none_all_nan );
     ("first_valid_returns_none_empty", `Quick, first_valid_returns_none_empty);
     ("first_valid_first_element", `Quick, first_valid_first_element);
+    QCheck_alcotest.to_alcotest pct_change_preserves_length;
+    QCheck_alcotest.to_alcotest pct_change_index_zero_is_nan;
+    QCheck_alcotest.to_alcotest pct_change_value_semantics;
   ]
 
 let () = Alcotest.run "Series" [ ("Series", tests) ]
