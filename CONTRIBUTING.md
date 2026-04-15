@@ -30,6 +30,16 @@ test/unit/cairos_finance/  # returns, drawdown, vol, sharpe — verified against
 test/unit/cairos_plot/     # SVG output, chart rendering
 ```
 
+### Property tests (QCheck)
+
+Property tests live alongside Alcotest tests in the same `test_series.ml`-style
+files. Generators (e.g. `daily_float_series_arb`) are defined inline in the
+test file that consumes them — promote to a shared helper only when a second
+consumer lands. Register a property in the Alcotest suite with
+`QCheck_alcotest.to_alcotest my_property` in the `tests` list. Runtime deps
+are `qcheck-core` and `qcheck-alcotest`, declared `:with-test` on `cairos`
+only.
+
 ## Coding Principles
 
 Listed in priority order. All are enforced — none are guidelines.
@@ -176,6 +186,11 @@ The rationale: notebooks are sequential. If cell 3 fails, there is no point
 running cell 7 with `None`. A crash with a clear error is better UX than
 `match x with Some ... | None -> print "unavailable"` boilerplate on every
 downstream binding.
+
+When a notebook cell uses `Printf.printf`, end the format string with `%!`
+(or otherwise flush `stdout`): `ocaml-jupyter` does not flush between cells,
+and output without `%!` can be lost or appear in the wrong cell. This was
+diagnosed during the PoC Task 1 walkthrough.
 
 ### X. Quality Gate
 

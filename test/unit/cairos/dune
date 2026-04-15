@@ -13,7 +13,15 @@
  (name test_series)
  (package cairos)
  (modules test_series)
- (libraries test_helpers cairos nx ptime fmt alcotest))
+ (libraries
+  test_helpers
+  cairos
+  nx
+  ptime
+  fmt
+  alcotest
+  qcheck-core
+  qcheck-alcotest))
 
 (test
  (name test_align)
