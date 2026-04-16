@@ -30,7 +30,9 @@
   nx
   (alcotest :with-test)
   (qcheck-core :with-test)
-  (qcheck-alcotest :with-test)))
+  (qcheck-alcotest :with-test)
+  (bechamel :with-test)
+  (bechamel-notty :with-test)))
 
 (package
  (name cairos_finance)

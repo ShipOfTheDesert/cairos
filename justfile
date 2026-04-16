@@ -20,6 +20,12 @@ build:
 test:
     opam exec -- dune runtest
 
+# Opt-in benchmark runner. Intentionally NOT part of the default gate or
+# `dune runtest` (per RFC 0032): benchmarks are manual, time-sensitive, and
+# their output is noise for CI. Run explicitly with `just bench`.
+bench:
+    opam exec -- dune exec bench/bench_series_map.exe
+
 fmt:
     opam exec -- dune fmt
 
