@@ -40,6 +40,42 @@ consumer lands. Register a property in the Alcotest suite with
 are `qcheck-core` and `qcheck-alcotest`, declared `:with-test` on `cairos`
 only.
 
+### Benchmarks (Bechamel)
+
+Benchmarks live under `bench/` — a top-level directory parallel to `lib/` and
+`test/`, **not** under `test/`. Each benchmark is a private `(executable ...)`
+stanza (never `(test ...)`) that links against `bechamel`, `bechamel-notty`,
+and `notty.unix`. The `bench/dune` stanza intentionally omits `(package cairos)`:
+dune rejects `(package ...)` on an executable without `(public_name ...)`, and
+adding `(public_name ...)` would leak the benchmark binary into
+`opam install cairos` and violate the `cairos` package's runtime-closure
+minimalism. `bechamel` / `bechamel-notty` are declared `:with-test` on `cairos`
+at the `dune-project` level, so the switch has them whenever
+`opam install --deps-only --with-test .` runs.
+
+Run a benchmark with:
+
+```bash
+opam exec -- dune exec bench/bench_series_map.exe
+```
+
+Benchmarks are **not** run by `just`, `dune runtest`, or any CI job. They are
+opt-in, slow (statistical sampling), and produce a Bechamel OLS table on
+stdout rather than pass/fail output. Regression thresholds and baseline storage
+are out of scope until a concrete need surfaces.
+
+Error-handling policy for `bench/*.ml` mirrors the notebook exemption (see
+Coding Principles §IX): setup failures `failwith` with a context label rather
+than propagating `result`. The `result`-everywhere rule applies to the core
+library, not to executable harnesses.
+
+When writing a new benchmark, copy `bench/bench_series_map.ml` as the
+reference template. One load-bearing detail: **input construction
+(`make_input ()`) must be hoisted out of the `Staged.stage` thunk**, so the
+staged thunk contains only the operation under measurement. Placing setup
+inside the staged thunk causes every measured iteration to rebuild the input,
+polluting `time/run` and the allocation columns with setup cost.
+
 ## Coding Principles
 
 Listed in priority order. All are enforced — none are guidelines.

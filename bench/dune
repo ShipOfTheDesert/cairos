@@ -1,0 +1,4 @@
+(executable
+ (name bench_series_map)
+ (modules bench_series_map)
+ (libraries cairos nx bechamel bechamel-notty notty.unix unix))
