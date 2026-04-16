@@ -5,10 +5,12 @@ runs:
   using: "composite"
 
   steps:
-    - uses: ocaml/setup-ocaml@v3.4.8
+    # Pinned to main (post-v3.6.0) for the fix:
+    # "Fall back to an older opam release when the latest lacks binaries"
+    # Revert to a release tag once v3.6.1+ is published.
+    - uses: ocaml/setup-ocaml@2ad498936c68917567ff6266a0fe8dbfa84d9fb4
       with:
         ocaml-compiler: 5.3.0
-        opam-version: "2.5.0"
         dune-cache: true
         dune-cache-prefix: v1
         opam-disable-sandboxing: true
