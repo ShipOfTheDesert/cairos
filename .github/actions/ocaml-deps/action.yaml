@@ -8,6 +8,7 @@ runs:
     - uses: ocaml/setup-ocaml@v3.4.8
       with:
         ocaml-compiler: 5.3.0
+        opam-version: "2.5.0"
         dune-cache: true
         dune-cache-prefix: v1
         opam-disable-sandboxing: true
