@@ -46,3 +46,9 @@
  (package cairos)
  (modules test_frame)
  (libraries test_helpers cairos nx ptime fmt alcotest))
+
+(test
+ (name test_series_scan)
+ (package cairos)
+ (modules test_series_scan)
+ (libraries cairos nx alcotest qcheck-core qcheck-alcotest))
