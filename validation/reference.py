@@ -94,6 +94,18 @@ def max_drawdown(prices: list[float]) -> float:
     return float(abs(dd.min()))
 
 
+def cumprod_series(prices: list[float]) -> list[tuple[int, float]]:
+    returns = pd.Series(prices).pct_change().dropna().reset_index(drop=True)
+    result = (1 + returns).cumprod()
+    return list(enumerate(result.tolist()))
+
+
+def cumsum_series(prices: list[float]) -> list[tuple[int, float]]:
+    returns = pd.Series(prices).pct_change().dropna().reset_index(drop=True)
+    result = returns.cumsum()
+    return list(enumerate(result.tolist()))
+
+
 def main():
     FIXTURES.mkdir(parents=True, exist_ok=True)
     for name, prices in SERIES.items():
@@ -105,6 +117,8 @@ def main():
         write_scalar(f"sharpe_rf4_{name}", sharpe(prices, risk_free=0.04))
         write_scalar(f"max_drawdown_{name}", max_drawdown(prices))
         write_series_csv(f"drawdown_series_{name}", drawdown_series(prices))
+        write_series_csv(f"cumprod_{name}", cumprod_series(prices))
+        write_series_csv(f"cumsum_{name}", cumsum_series(prices))
 
 
 if __name__ == "__main__":

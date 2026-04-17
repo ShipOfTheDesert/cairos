@@ -85,3 +85,38 @@ val bfill : ('freq, (float, 'b) Nx.t) t -> ('freq, (float, 'b) Nx.t) t
 (** [bfill s] replaces each [Float.nan] with the nearest subsequent non-NaN
     value (by position). Trailing NaNs with no subsequent non-NaN remain
     [Float.nan]. *)
+
+(** {1 Accumulation}
+
+    Prefix-accumulation (scan / running fold) operations over float series. Each
+    produces a new series of the same length and index where element [i] is the
+    left-fold of the first [i+1] input elements. Single-pass O(n). NaN
+    propagation follows IEEE 754 defaults. *)
+
+val scan :
+  (float -> float -> float) ->
+  float ->
+  ('freq, (float, 'b) Nx.t) t ->
+  ('freq, (float, Bigarray.float64_elt) Nx.t) t
+(** [scan f init s] computes a prefix accumulation (left-scan) over the series
+    values. Element [i] of the result is
+    [fold_left f init (values.(0) ... values.(i))]. The series index and
+    frequency are preserved. The output element type is always
+    [Bigarray.float64_elt] regardless of the input element type.
+
+    [scan] is total: an empty series produces an empty series.
+
+    {b NaN propagation.} A NaN at position [i] poisons the accumulator: all
+    elements from [i] onward are NaN (IEEE 754 arithmetic). *)
+
+val cumsum :
+  ('freq, (float, 'b) Nx.t) t -> ('freq, (float, Bigarray.float64_elt) Nx.t) t
+(** [cumsum s] computes the running sum. Equivalent to [scan ( +. ) 0.0 s].
+
+    A NaN at position [i] causes all subsequent elements to be NaN. *)
+
+val cumprod :
+  ('freq, (float, 'b) Nx.t) t -> ('freq, (float, Bigarray.float64_elt) Nx.t) t
+(** [cumprod s] computes the running product. Equivalent to [scan ( *. ) 1.0 s].
+
+    A NaN at position [i] causes all subsequent elements to be NaN. *)

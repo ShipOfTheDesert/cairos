@@ -87,3 +87,18 @@ let bfill t =
   done;
   let values = Nx.create (Nx.dtype t.values) [| len |] out in
   { index = t.index; values }
+
+let scan f init t =
+  let arr = Nx.to_array t.values in
+  let len = Array.length arr in
+  let out = Array.make len 0.0 in
+  let acc = ref init in
+  for i = 0 to len - 1 do
+    acc := f !acc arr.(i);
+    out.(i) <- !acc
+  done;
+  let values = Nx.create Nx.float64 [| len |] out in
+  { index = t.index; values }
+
+let cumsum t = scan ( +. ) 0.0 t
+let cumprod t = scan ( *. ) 1.0 t

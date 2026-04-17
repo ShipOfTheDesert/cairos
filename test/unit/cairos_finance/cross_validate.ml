@@ -433,6 +433,59 @@ let validate_drawdown_series_extreme () =
   validate_series_metric ~metric:"drawdown_series" ~series_name:"extreme"
     ~tolerance:1e-12 ~compute:Cairos_finance.drawdown_series ()
 
+let validate_cumprod_normal () =
+  validate_series_metric ~metric:"cumprod" ~series_name:"normal"
+    ~tolerance:1e-10
+    ~compute:(fun returns_no_nan ->
+      Cairos.Series.map (fun v -> Nx.add_s v 1.0) returns_no_nan
+      |> Cairos.Series.cumprod)
+    ()
+
+let validate_cumprod_drawdown () =
+  validate_series_metric ~metric:"cumprod" ~series_name:"drawdown"
+    ~tolerance:1e-10
+    ~compute:(fun returns_no_nan ->
+      Cairos.Series.map (fun v -> Nx.add_s v 1.0) returns_no_nan
+      |> Cairos.Series.cumprod)
+    ()
+
+let validate_cumprod_flat () =
+  validate_series_metric ~metric:"cumprod" ~series_name:"flat" ~tolerance:1e-10
+    ~compute:(fun returns_no_nan ->
+      Cairos.Series.map (fun v -> Nx.add_s v 1.0) returns_no_nan
+      |> Cairos.Series.cumprod)
+    ()
+
+let validate_cumprod_extreme () =
+  validate_series_metric ~metric:"cumprod" ~series_name:"extreme"
+    ~tolerance:1e-10
+    ~compute:(fun returns_no_nan ->
+      Cairos.Series.map (fun v -> Nx.add_s v 1.0) returns_no_nan
+      |> Cairos.Series.cumprod)
+    ()
+
+let validate_cumsum_normal () =
+  validate_series_metric ~metric:"cumsum" ~series_name:"normal" ~tolerance:1e-10
+    ~compute:(fun returns_no_nan -> Cairos.Series.cumsum returns_no_nan)
+    ()
+
+let validate_cumsum_drawdown () =
+  validate_series_metric ~metric:"cumsum" ~series_name:"drawdown"
+    ~tolerance:1e-10
+    ~compute:(fun returns_no_nan -> Cairos.Series.cumsum returns_no_nan)
+    ()
+
+let validate_cumsum_flat () =
+  validate_series_metric ~metric:"cumsum" ~series_name:"flat" ~tolerance:1e-10
+    ~compute:(fun returns_no_nan -> Cairos.Series.cumsum returns_no_nan)
+    ()
+
+let validate_cumsum_extreme () =
+  validate_series_metric ~metric:"cumsum" ~series_name:"extreme"
+    ~tolerance:1e-10
+    ~compute:(fun returns_no_nan -> Cairos.Series.cumsum returns_no_nan)
+    ()
+
 let () =
   Alcotest.run "cross_validate"
     [
@@ -529,5 +582,21 @@ let () =
             validate_drawdown_series_flat;
           Alcotest.test_case "extreme vs Pandas" `Quick
             validate_drawdown_series_extreme;
+        ] );
+      ( "cumprod",
+        [
+          Alcotest.test_case "normal vs Pandas" `Quick validate_cumprod_normal;
+          Alcotest.test_case "drawdown vs Pandas" `Quick
+            validate_cumprod_drawdown;
+          Alcotest.test_case "flat vs Pandas" `Quick validate_cumprod_flat;
+          Alcotest.test_case "extreme vs Pandas" `Quick validate_cumprod_extreme;
+        ] );
+      ( "cumsum",
+        [
+          Alcotest.test_case "normal vs Pandas" `Quick validate_cumsum_normal;
+          Alcotest.test_case "drawdown vs Pandas" `Quick
+            validate_cumsum_drawdown;
+          Alcotest.test_case "flat vs Pandas" `Quick validate_cumsum_flat;
+          Alcotest.test_case "extreme vs Pandas" `Quick validate_cumsum_extreme;
         ] );
     ]
