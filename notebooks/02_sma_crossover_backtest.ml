@@ -48,13 +48,12 @@
 (* ## Shared helpers *)
 (* *)
 (* Both backtest notebooks share a small `notebooks/_helpers.ml` file that *)
-(* holds two pieces of boilerplate: `unwrap`, a terse notebook-style *)
-(* `Result` unwrap that fails loudly on `Error`, and `product_1p`, the *)
-(* expanding-window reducer that turns a returns window into an equity *)
-(* multiplier. Factoring shared boilerplate into a sibling `.ml` file and *)
-(* loading it with `#use` is the common real-world practice for notebook *)
-(* series that share helper functions — keeping each notebook's body focused *)
-(* on the strategy, not the ceremony. *)
+(* holds one piece of boilerplate: `unwrap`, a terse notebook-style *)
+(* `Result` unwrap that fails loudly on `Error`. Factoring shared *)
+(* boilerplate into a sibling `.ml` file and loading it with `#use` is the *)
+(* common real-world practice for notebook series that share helper *)
+(* functions — keeping each notebook's body focused on the strategy, not *)
+(* the ceremony. *)
 
 (* %% vscode={"languageId": "ocaml"} *)
 #use "_helpers.ml"
@@ -214,16 +213,15 @@ let () =
 (* %% [markdown] *)
 (* ## Equity curve *)
 (* *)
-(* `Window.expanding product_1p stgret_active` computes the cumulative *)
-(* product of `(1 + r)` at every position, producing the equity *)
-(* multiplier series starting from `1.0`. This keeps the backtest *)
-(* entirely on the public API — no private access, no `raise` — at the *)
-(* cost of an O(n²) scan (each expanding window recomputes the full *)
-(* product). Invisible at 40 points; the wrong shape at realistic *)
-(* sizes. *)
+(* The equity multiplier at each day is the running product of `(1 + r)` *)
+(* over the active strategy returns. `Series.cumprod` is the idiomatic *)
+(* Cairos primitive for this: a single linear pass that preserves the *)
+(* daily index and the frequency phantom type. `Series.map` first lifts *)
+(* each return `r` to `1 + r`; `Series.cumprod` then threads the *)
+(* multiplicative accumulator forward, starting from `1.0`. *)
 
 (* %% vscode={"languageId": "ocaml"} *)
-let equity = Window.expanding product_1p stgret_active
+let equity = Series.cumprod (Series.map (fun t -> Nx.add_s t 1.0) stgret_active)
 
 let () =
   Cairos_plot.line_chart ~title:"SMA crossover — Equity curve" equity

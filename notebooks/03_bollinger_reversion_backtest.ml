@@ -49,13 +49,12 @@
 (* ## Shared helpers *)
 (* *)
 (* Both backtest notebooks share a small `notebooks/_helpers.ml` file that *)
-(* holds two pieces of boilerplate: `unwrap`, a terse notebook-style *)
-(* `Result` unwrap that fails loudly on `Error`, and `product_1p`, the *)
-(* expanding-window reducer that turns a returns window into an equity *)
-(* multiplier. Factoring shared boilerplate into a sibling `.ml` file and *)
-(* loading it with `#use` is the common real-world practice for notebook *)
-(* series that share helper functions — keeping each notebook's body focused *)
-(* on the strategy, not the ceremony. *)
+(* holds one piece of boilerplate: `unwrap`, a terse notebook-style *)
+(* `Result` unwrap that fails loudly on `Error`. Factoring shared *)
+(* boilerplate into a sibling `.ml` file and loading it with `#use` is the *)
+(* common real-world practice for notebook series that share helper *)
+(* functions — keeping each notebook's body focused on the strategy, not *)
+(* the ceremony. *)
 
 (* %% vscode={"languageId": "ocaml"} *)
 #use "_helpers.ml"
@@ -165,31 +164,29 @@ let () =
   Cairos_jupyter.pp_first_valid "lower_band" lower_band
 
 (* %% [markdown] *)
-(* ## Signal via two crossing indicators and an expanding state scan *)
+(* ## Signal via two crossing indicators and `Series.scan` *)
 (* *)
 (* The mean-reversion signal is stateful: once we enter (price crossed *)
 (* below the lower band), we stay long until the price crosses back above *)
-(* the 20-day SMA. Cairos does not expose a scan primitive on series, so *)
-(* we implement the state machine using the public API only: *)
+(* the 20-day SMA. `Series.scan` is the idiomatic Cairos primitive for *)
+(* this kind of left-fold-shaped stateful transformation — a single linear *)
+(* pass that threads an accumulator through the series while preserving *)
+(* the frequency phantom type and the index. *)
 (* *)
 (* 1. `below_lower[i] = 1.0` when `price[i] < lower_band[i]`, else `0.0`. *)
 (* 2. `above_sma[i]  = 1.0` when `price[i] > sma_20[i]`, else `0.0`. *)
 (* 3. `event[i] = below_lower[i] - above_sma[i]` — a signed indicator: *)
 (*    `+1` on entry, `-1` on exit, `0` otherwise. *)
-(* 4. `position = Window.expanding last_state event` where `last_state` *)
-(*    scans the growing window backward for the most recent non-zero *)
-(*    event and returns `1.0` for `+1`, `0.0` for `-1` or no event. *)
+(* 4. `position` is the running state: the accumulator flips to `1.0` on *)
+(*    an entry event (`e > 0.5`), back to `0.0` on an exit event *)
+(*    (`e < -0.5`), and carries the previous value forward on `0.0` *)
+(*    events. Seeding the scan with `0.0` encodes "flat before any entry *)
+(*    event has occurred." *)
 (* *)
 (* During the SMA warmup (`i < 19`), every comparison against `NaN` *)
 (* evaluates to `false` under IEEE 754, so both indicators are `0.0`, the *)
-(* event series is `0.0`, and the position stays flat — the correct *)
-(* behaviour for a warmup period. *)
-(* *)
-(* This is the "option (a)" shape described in the task: two indicator *)
-(* series via `Align.align` + `map2`, then `Window.expanding` with a *)
-(* last-crossing reducer. The expanding scan is O(n²) (each position *)
-(* rescans its whole prefix), which is invisible at 90 points but *)
-(* already the wrong shape at realistic sizes — recorded as a finding. *)
+(* event series is `0.0`, and the scan's accumulator stays at its `0.0` *)
+(* seed — the correct flat-during-warmup behaviour. *)
 
 (* %% vscode={"languageId": "ocaml"} *)
 let below_lower =
@@ -213,19 +210,12 @@ let event =
   in
   Align.map2 (fun b a -> b -. a) paired
 
-let last_state window =
-  let arr = Nx.to_array window in
-  let rec scan i =
-    if i < 0 then 0.0
-    else
-      let e = arr.(i) in
-      if e > 0.5 then 1.0
-      else if e < -0.5 then 0.0
-      else scan (i - 1)
-  in
-  scan (Array.length arr - 1)
-
-let position = Window.expanding last_state event
+let position =
+  Series.scan
+    (fun acc e ->
+      if e > 0.5 then 1.0 else if e < -0.5 then 0.0 else acc)
+    0.0
+    event
 
 let () = Cairos_jupyter.pp_series ~n:5 "position" position
 
@@ -287,13 +277,16 @@ let () =
 (* %% [markdown] *)
 (* ## Equity curve *)
 (* *)
-(* `Window.expanding product_1p stgret_active` computes the cumulative *)
-(* product of `(1 + r)` at every position, producing the equity *)
-(* multiplier series starting from `1.0`. Same public-API-only approach *)
-(* (and same O(n²) finding) as the SMA crossover notebook. *)
+(* The equity multiplier at each day is the running product of `(1 + r)` *)
+(* over the active strategy returns. `Series.cumprod` is the idiomatic *)
+(* Cairos primitive for this: a single linear pass that preserves the *)
+(* daily index and the frequency phantom type. `Series.map` first lifts *)
+(* each return `r` to `1 + r`; `Series.cumprod` then threads the *)
+(* multiplicative accumulator forward, starting from `1.0`. Same two-line *)
+(* shape as the SMA crossover notebook. *)
 
 (* %% vscode={"languageId": "ocaml"} *)
-let equity = Window.expanding product_1p stgret_active
+let equity = Series.cumprod (Series.map (fun t -> Nx.add_s t 1.0) stgret_active)
 
 let () =
   Cairos_plot.line_chart ~title:"Bollinger reversion — Equity curve" equity
