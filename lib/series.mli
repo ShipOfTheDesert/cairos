@@ -120,3 +120,26 @@ val cumprod :
 (** [cumprod s] computes the running product. Equivalent to [scan ( *. ) 1.0 s].
 
     A NaN at position [i] causes all subsequent elements to be NaN. *)
+
+(** {1 Missing-value removal}
+
+    Mask-and-gather operations over float series. Unlike the length-preserving
+    operations above, these return a series whose index is a strict subset of
+    the input index. The frequency tag is preserved — [`Daily] in, [`Daily] out
+    — because [Freq.t] is a cadence marker, not a strict-regularity claim. *)
+
+val dropna : ('freq, (float, 'b) Nx.t) t -> ('freq, (float, 'b) Nx.t) t
+(** [dropna s] returns a series containing every element of [s] whose value is
+    not [Float.nan], in input order, each paired with its original timestamp.
+    [length (dropna s) = length s - k] where [k] is the number of [Float.nan]
+    values in [s].
+
+    [dropna] is total: an empty input returns an empty output, and an all-NaN
+    input returns an empty output. No [result] wrapping, no exceptions (PRD
+    NFR-4).
+
+    Only [Float.nan] is filtered. [infinity] and [neg_infinity] are preserved,
+    since [Float.is_nan] returns [false] for both; downstream consumers that
+    require finite inputs should compose [dropna] with a separate finite filter.
+
+    The frequency tag and the [Bigarray] element type are preserved. *)

@@ -102,3 +102,27 @@ let scan f init t =
 
 let cumsum t = scan ( +. ) 0.0 t
 let cumprod t = scan ( *. ) 1.0 t
+
+let dropna t =
+  let arr = Nx.to_array t.values in
+  let n = Array.length arr in
+  let ts_in = Index.timestamps t.index in
+  let k = ref 0 in
+  for i = 0 to n - 1 do
+    if not (Float.is_nan arr.(i)) then incr k
+  done;
+  let out_len = !k in
+  let positions = Array.make out_len 0l in
+  let ts_out = Array.make out_len Ptime.epoch in
+  let j = ref 0 in
+  for i = 0 to n - 1 do
+    if not (Float.is_nan arr.(i)) then begin
+      positions.(!j) <- Int32.of_int i;
+      ts_out.(!j) <- ts_in.(i);
+      incr j
+    end
+  done;
+  let pos_nx = Nx.create Nx.int32 [| out_len |] positions in
+  let values = Nx.take pos_nx t.values in
+  let index = Index.of_ptime_array_unsafe (Index.freq t.index) ts_out in
+  { index; values }
