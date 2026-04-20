@@ -1,13 +1,15 @@
 (** Alignment of two same-frequency series on a shared index.
 
-    The private {!aligned} type can only be constructed by {!align}, making
-    misalignment unrepresentable at the call site. *)
+    The abstract {!aligned} type can only be constructed by {!align} and can
+    only be inspected through the accessor functions below. *)
 
-type ('freq, 'a, 'b) aligned = private {
-  index : 'freq Index.t;
-  left : 'a;
-  right : 'b;
-}
+type ('freq, 'a, 'b) aligned
+(** A frequency-tagged pair of reindexed value arrays produced by {!align}.
+
+    Abstract: values of this type are constructed only by {!align} and inspected
+    only through {!index}, {!left}, {!right}, and {!map2}. External callers
+    cannot pattern-match or project fields — misaligned binary operations remain
+    unrepresentable by construction. *)
 
 val align :
   strategy:[ `Inner | `Left | `Asof of [ `Forward | `Backward ] ] ->
