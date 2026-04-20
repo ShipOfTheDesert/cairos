@@ -150,8 +150,16 @@ Specific invariants that are structurally enforced:
 - Misaligned binary operations are impossible by construction. `map2` and all
   binary operations require a `Cairos.Align.aligned` value — the only way to
   produce one is through `Cairos.Align.align`.
-- `Cairos.Align.aligned` uses `private` to prevent construction outside
-  `Cairos.Align`. This is load-bearing — never remove it.
+- `Cairos.Align.aligned` is an **abstract type** in the public signature —
+  external callers cannot construct it, destructure it, or project its
+  fields. This is load-bearing — never remove it. No automated regression
+  test guards this invariant; the OCaml compiler does (any external
+  destructuring fails to compile). Reviewers: any PR that modifies
+  `lib/align.mli`'s `aligned` declaration must preserve full abstractness
+  — reject widenings to `private { ... }`, to a concrete record, or to any
+  manifest RHS. If in doubt, attempt to compile `let _probe (a : (_, _, _)
+  Cairos.Align.aligned) = a.left` as a throwaway — it must fail with
+  "this expression has an abstract type".
 - GADTs are preferred over variants + runtime checks when the invariant is
   statically knowable. `Freq.t` is the canonical example.
 
@@ -182,7 +190,7 @@ Add `.mli` files only when they add genuine value:
 
 - The module is public API consumed by third parties outside Cairos
 - Implementation details must be hidden from other modules within Cairos
-  (e.g. the `private` constraint on `Align.aligned`)
+  (e.g. the abstract `Align.aligned` type)
 
 Internal modules used only within Cairos development do not need `.mli` files
 by default. Do not add them as a matter of habit.
