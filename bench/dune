@@ -7,3 +7,8 @@
  (name bench_cumprod)
  (modules bench_cumprod)
  (libraries cairos nx bechamel bechamel-notty notty.unix unix))
+
+(executable
+ (name bench_dropna)
+ (modules bench_dropna)
+ (libraries cairos nx bechamel bechamel-notty notty.unix unix))
