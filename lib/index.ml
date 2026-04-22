@@ -1,14 +1,27 @@
 type 'freq t = { freq : 'freq Freq.t; timestamps : Ptime.t array }
 
+type err =
+  | Invalid_timestamp of { position : int; raw : string }
+  | Non_monotonic of { position : int }
+  | Invalid_unix_timestamp of { position : int; raw : float }
+
+let err_to_string = function
+  | Invalid_timestamp { position; raw } ->
+      Printf.sprintf "invalid timestamp at position %d: %s" position raw
+  | Non_monotonic { position } ->
+      Printf.sprintf "timestamps not strictly monotonic at position %d" position
+  | Invalid_unix_timestamp { position; raw } ->
+      Printf.sprintf "invalid unix timestamp at position %d: %s" position
+        (Float.to_string raw)
+
 let ( let* ) = Result.bind
 
-let validate_monotonic (ts : Ptime.t array) : (unit, string) result =
+let validate_monotonic (ts : Ptime.t array) : (unit, err) result =
   let len = Array.length ts in
   let rec loop i =
     if i >= len then Ok ()
     else if Ptime.compare ts.(i - 1) ts.(i) >= 0 then
-      Error
-        (Printf.sprintf "timestamps not strictly monotonic at position %d" i)
+      Error (Non_monotonic { position = i })
     else loop (i + 1)
   in
   if len <= 1 then Ok () else loop 1
@@ -21,9 +34,9 @@ let parse_timestamp i s =
   in
   match Ptime.of_rfc3339 s' with
   | Ok (t, _, _) -> Ok t
-  | Error _ -> Error (Printf.sprintf "invalid timestamp at position %d: %s" i s)
+  | Error _ -> Error (Invalid_timestamp { position = i; raw = s })
 
-let parse_timestamps (strings : string array) : (Ptime.t array, string) result =
+let parse_timestamps (strings : string array) : (Ptime.t array, err) result =
   let len = Array.length strings in
   let ts = Array.make len Ptime.epoch in
   let rec loop i =
@@ -68,9 +81,7 @@ let of_unix_floats freq floats =
           ts.(i) <- t;
           loop (i + 1)
       | None ->
-          Error
-            (Printf.sprintf "invalid unix timestamp at position %d: %s" i
-               (Float.to_string floats.(i)))
+          Error (Invalid_unix_timestamp { position = i; raw = floats.(i) })
   in
   loop 0
 

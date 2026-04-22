@@ -1,0 +1,7 @@
+(test
+ (name test_cairos_io)
+ (package cairos_io)
+ (modules test_cairos_io)
+ (deps
+  (glob_files fixtures/*.csv))
+ (libraries cairos cairos_io nx ptime fmt alcotest))

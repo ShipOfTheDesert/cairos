@@ -184,6 +184,11 @@ Chain with `let*`. Do not unwrap with `Result.get_ok` outside tests.
 Never `raise`. Never `failwith`. Never `assert false` as an error path. If you
 find yourself wanting to raise, the design is wrong.
 
+- For functions whose precondition is "input list must be non-empty", use
+  `Cairos.Nonempty.t` at the function signature rather than a runtime `result`
+  rejection. Empty-list is a programmer error; lift the check to the type
+  system. `Frame.of_series` is the canonical example.
+
 ### VI. .mli Files
 
 Add `.mli` files only when they add genuine value:

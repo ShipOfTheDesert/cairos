@@ -20,7 +20,7 @@ let make_input () =
   let idx =
     match Cairos.Index.of_unix_floats Cairos.Freq.Day ts with
     | Ok i -> i
-    | Error e -> failwith ("bench input index: " ^ e)
+    | Error e -> failwith ("bench input index: " ^ Cairos.Index.err_to_string e)
   in
   let values = Nx.create Nx.float64 [| n |] (Array.init n float_of_int) in
   match Cairos.Series.make idx values with

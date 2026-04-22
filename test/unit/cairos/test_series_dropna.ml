@@ -13,7 +13,7 @@ let make_daily_series_from_floats (xs : float array) :
   let idx =
     match Cairos.Index.of_unix_floats Cairos.Freq.Day ts with
     | Ok i -> i
-    | Error e -> failwith ("generator index: " ^ e)
+    | Error e -> failwith ("generator index: " ^ Cairos.Index.err_to_string e)
   in
   let values = Nx.create Nx.float64 [| n |] xs in
   match Cairos.Series.make idx values with
@@ -119,7 +119,7 @@ let make_daily_float32_series_from_floats (xs : float array) :
   let idx =
     match Cairos.Index.of_unix_floats Cairos.Freq.Day ts with
     | Ok i -> i
-    | Error e -> failwith ("generator index: " ^ e)
+    | Error e -> failwith ("generator index: " ^ Cairos.Index.err_to_string e)
   in
   let values = Nx.create Nx.float32 [| n |] xs in
   match Cairos.Series.make idx values with

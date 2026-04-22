@@ -20,7 +20,7 @@ let make_input () =
   let idx =
     match Cairos.Index.of_unix_floats Cairos.Freq.Day ts with
     | Ok i -> i
-    | Error e -> failwith ("bench input index: " ^ e)
+    | Error e -> failwith ("bench input index: " ^ Cairos.Index.err_to_string e)
   in
   (* Synthetic (1 + returns) series: random positive values in [0.99, 1.01] *)
   let values =

@@ -86,3 +86,22 @@
  (description
   "Bytecode-only adapter that renders Cairos_plot SVG output inline in Jupyter cells and provides pretty-printers for Cairos.Series and Cairos.Frame values")
  (depends cairos cairos_plot nx jupyter ocaml))
+
+(package
+ (name cairos_io)
+ (synopsis "CSV loading for Cairos time-series")
+ (description
+  "Typed CSV readers that materialise single-series and multi-instrument frames from wide-format files with position-anchored error reporting")
+ (depends
+  cairos
+  ocaml
+  nx
+  (ptime
+   (and
+    (>= 1.2.0)
+    :with-test))
+  (fmt
+   (and
+    (>= 0.11.0)
+    :with-test))
+  (alcotest :with-test)))

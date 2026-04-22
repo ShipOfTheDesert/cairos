@@ -126,7 +126,7 @@ let date_strings =
       Printf.sprintf "%04d-%02d-%02d" y m d)
 
 let prices =
-  let idx = unwrap "Index.daily" (Index.daily date_strings) in
+  let idx = unwrap_index "Index.daily" (Index.daily date_strings) in
   unwrap "Series.make"
     (Series.make idx (Nx.create Nx.float64 [| n_days |] price_values))
 

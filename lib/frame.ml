@@ -23,32 +23,30 @@ let has_duplicate_names pairs =
   in
   check [] pairs
 
-let of_series pairs =
-  match pairs with
-  | [] -> Error "Frame.of_series: empty series list"
-  | (_, first_series) :: rest -> (
-      match has_duplicate_names pairs with
-      | Some name ->
-          Error ("Frame.of_series: duplicate column name \"" ^ name ^ "\"")
-      | None -> (
-          let ref_index = Series.index first_series in
-          let rec validate = function
-            | [] -> Ok ()
-            | (name, s) :: tl ->
-                if indices_equal ref_index (Series.index s) then validate tl
-                else
-                  Error
-                    ("Frame.of_series: index mismatch for column \"" ^ name
-                   ^ "\"")
-          in
-          match validate rest with
-          | Error _ as e -> e
-          | Ok () ->
-              Ok
-                {
-                  index = ref_index;
-                  columns = List.map (fun (n, s) -> (n, Series.values s)) pairs;
-                }))
+let of_series pairs_ne =
+  let { Nonempty.head = _, first_series; tail = rest } = pairs_ne in
+  let pairs = Nonempty.to_list pairs_ne in
+  match has_duplicate_names pairs with
+  | Some name ->
+      Error ("Frame.of_series: duplicate column name \"" ^ name ^ "\"")
+  | None -> (
+      let ref_index = Series.index first_series in
+      let rec validate = function
+        | [] -> Ok ()
+        | (name, s) :: tl ->
+            if indices_equal ref_index (Series.index s) then validate tl
+            else
+              Error
+                ("Frame.of_series: index mismatch for column \"" ^ name ^ "\"")
+      in
+      match validate rest with
+      | Error _ as e -> e
+      | Ok () ->
+          Ok
+            {
+              index = ref_index;
+              columns = List.map (fun (n, s) -> (n, Series.values s)) pairs;
+            })
 
 let get name frame =
   match List.assoc_opt name frame.columns with

@@ -7,7 +7,9 @@ let index_of_length ~freq ~step n =
   in
   match Cairos.Index.of_unix_floats freq floats with
   | Ok idx -> idx
-  | Error msg -> Alcotest.fail (Printf.sprintf "index_of_length: %s" msg)
+  | Error e ->
+      Alcotest.fail
+        (Printf.sprintf "index_of_length: %s" (Cairos.Index.err_to_string e))
 
 let daily_index_of_length n =
   index_of_length ~freq:Cairos.Freq.Day ~step:86_400.0 n

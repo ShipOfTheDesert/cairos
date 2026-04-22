@@ -188,7 +188,9 @@ let prices =
       139.0;
     |]
   in
-  let* idx = Index.daily dates in
+  let* idx =
+    Result.map_error Cairos.Index.err_to_string (Index.daily dates)
+  in
   Series.make idx (Nx.create Nx.float64 [| Array.length values |] values)
 
 let prices =
@@ -283,12 +285,13 @@ let () = Cairos_jupyter.pp_series ~n:5 "weekly_prices" weekly_prices
 let frame =
   match
     Frame.of_series
-      [
-        ("price", prices);
-        ("sma_20", sma_20);
-        ("upper", upper_band);
-        ("lower", lower_band);
-      ]
+      (Nonempty.make
+         ("price", prices)
+         [
+           ("sma_20", sma_20);
+           ("upper", upper_band);
+           ("lower", lower_band);
+         ])
   with
   | Ok f -> f
   | Error e -> failwith (Printf.sprintf "Frame construction failed: %s" e)
