@@ -66,7 +66,7 @@ notebooks:
     set -euo pipefail
     command -v jupytext >/dev/null || { echo "jupytext not installed, skipping notebooks"; exit 0; }
     command -v papermill >/dev/null || { echo "papermill not installed, skipping notebooks"; exit 0; }
-    opam exec -- dune install cairos cairos_finance cairos_plot cairos_jupyter
+    opam exec -- dune install cairos cairos_io cairos_finance cairos_plot cairos_jupyter
     mkdir -p _build/notebooks
     for nb in notebooks/[0-9]*.ml; do
         base=$(basename "$nb" .ml)

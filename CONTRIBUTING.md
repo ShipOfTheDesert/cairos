@@ -178,7 +178,16 @@ construction. They never produce a `result` or an exception.
 return `result`. These are genuine environmental conditions the caller must
 handle.
 
-`result` appears in exactly one place in the core library: `Cairos.Align.align`.
+`result` appears only at genuine runtime boundaries. The sanctioned sites are:
+
+- `Cairos.Index` smart constructors (`daily`, `minute`, `hourly`, `weekly`,
+  `of_unix_floats`) — parse failures and monotonicity violations.
+- `Cairos.Series.make` — index/values length mismatch.
+- `Cairos.Align.align` — may produce an empty index.
+- `Cairos.Resample.resample` — target frequency must be lower than source.
+- `Cairos.Frame.of_series` — duplicate column names and index mismatch.
+- The entire `cairos_io` public surface — CSV parsing is a runtime boundary.
+
 Chain with `let*`. Do not unwrap with `Result.get_ok` outside tests.
 
 Never `raise`. Never `failwith`. Never `assert false` as an error path. If you

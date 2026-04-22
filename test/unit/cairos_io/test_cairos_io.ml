@@ -129,6 +129,16 @@ let of_csv_with_equal_cols_returns_error () =
     (fixture "single_daily_standard.csv")
   |> check_error ~label:"equal cols" ~needles:[ "invalid argument" ]
 
+let of_csv_with_narrow_first_row_reports_line () =
+  (* First data row of [single_daily_standard.csv] has 2 columns; asking for
+     [~price_col:2] needs 3. Mirrors the frame [narrow_first_row] test on the
+     single-series path. *)
+  Cairos_io.of_csv_with ~freq:Cairos.Freq.Day ~header:true ~timestamp_col:0
+    ~price_col:2
+    (fixture "single_daily_standard.csv")
+  |> check_error ~label:"single-series narrow first row"
+       ~needles:[ "line 2"; "expected at least 3"; "found 2" ]
+
 let get_series name frame =
   match Cairos.Frame.get name frame with
   | Some s -> s
@@ -247,6 +257,16 @@ let frame_of_csv_with_narrow_first_row_returns_error () =
     (fixture "frame_narrow_first_row.csv")
   |> check_error ~label:"frame narrow first row"
        ~needles:[ "line 1"; "expected at least 4"; "found 2" ]
+
+let frame_of_csv_with_timestamp_only_file_returns_empty_frame_columns () =
+  (* Single-column file with [~header:false ~timestamp_col:0] leaves zero
+     instrument columns after filtering — exercises the [Empty_frame_columns]
+     branch that guards [Nonempty.of_list []]. *)
+  Cairos_io.frame_of_csv_with ~freq:Cairos.Freq.Day ~header:false
+    ~timestamp_col:0
+    (fixture "frame_timestamps_only.csv")
+  |> check_error ~label:"frame with only a timestamp column"
+       ~needles:[ "no instrument columns" ]
 
 let of_csv_minute_loads_series () =
   let path = fixture "single_minute_standard.csv" in
@@ -368,6 +388,8 @@ let () =
             of_csv_with_negative_col_returns_error;
           Alcotest.test_case "equal cols rejected" `Quick
             of_csv_with_equal_cols_returns_error;
+          Alcotest.test_case "narrow first row reports line" `Quick
+            of_csv_with_narrow_first_row_reports_line;
         ] );
       ( "frame happy paths",
         [
@@ -398,5 +420,7 @@ let () =
             frame_of_csv_with_short_row_reports_line;
           Alcotest.test_case "frame narrow first row rejected" `Quick
             frame_of_csv_with_narrow_first_row_returns_error;
+          Alcotest.test_case "frame with only a timestamp column" `Quick
+            frame_of_csv_with_timestamp_only_file_returns_empty_frame_columns;
         ] );
     ]

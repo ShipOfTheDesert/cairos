@@ -24,7 +24,8 @@ let has_duplicate_names pairs =
   check [] pairs
 
 let of_series pairs_ne =
-  let { Nonempty.head = _, first_series; tail = rest } = pairs_ne in
+  let _, first_series = Nonempty.hd pairs_ne in
+  let rest = Nonempty.tl pairs_ne in
   let pairs = Nonempty.to_list pairs_ne in
   match has_duplicate_names pairs with
   | Some name ->

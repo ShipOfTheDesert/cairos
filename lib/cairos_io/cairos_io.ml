@@ -238,6 +238,8 @@ let find_duplicate_header columns =
 let frame_collect ~timestamp_col ~instrument_cols rows =
   let n = List.length rows in
   let ncols = List.length instrument_cols in
+  (* Local scratch arrays — never escape as mutable; consumed into Nx tensors
+     one column at a time below. Matches the [Frame.describe] precedent. *)
   let timestamps = Array.make n "" in
   let column_values = Array.init ncols (fun _ -> Array.make n Float.nan) in
   let rec loop i = function

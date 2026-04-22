@@ -26,14 +26,10 @@ val to_list : 'a t -> 'a list
 val hd : 'a t -> 'a
 (** [hd ne] returns the head element. Total by construction. *)
 
+val tl : 'a t -> 'a list
+(** [tl ne] returns the (possibly empty) tail. Total by construction — symmetric
+    to {!hd}, lets callers decompose without the [private]-record pattern-match.
+*)
+
 val length : 'a t -> int
 (** [length ne] returns the number of elements, always at least [1]. *)
-
-val map : ('a -> 'b) -> 'a t -> 'b t
-(** [map f ne] applies [f] to every element, preserving length. *)
-
-val fold_left : ('acc -> 'a -> 'acc) -> 'acc -> 'a t -> 'acc
-(** [fold_left f init ne] folds across all elements starting with [head]. *)
-
-val append : 'a t -> 'a list -> 'a t
-(** [append ne xs] appends [xs] after the last element of [ne]. *)

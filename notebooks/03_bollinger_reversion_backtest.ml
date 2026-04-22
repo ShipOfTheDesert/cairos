@@ -36,6 +36,7 @@
 #load "stdlib.cma"
 
 #require "cairos"
+#require "cairos_io"
 #require "cairos_finance"
 #require "cairos_plot"
 
@@ -63,10 +64,12 @@
 open Cairos
 
 (* %% [markdown] *)
-(* ## Synthetic price series *)
+(* ## Price series (loaded from CSV) *)
 (* *)
-(* A 90-day daily price series built from a gentle upward drift, a small *)
-(* oscillation, and three deliberate downward shocks: *)
+(* A 90-day daily price series loaded from *)
+(* `data/03_bollinger_reversion.csv` via `Cairos_io.of_csv`. The CSV was *)
+(* generated from a gentle upward drift, a small oscillation, and three *)
+(* deliberate downward shocks: *)
 (* *)
 (* ```text *)
 (* p[i] = 100 + 0.05 * i + 2 * sin(2π * i / 12) + shock[i] *)
@@ -81,54 +84,11 @@ open Cairos
 (* band to trigger an entry, and the price then reverts to the drift line *)
 (* within a day or two, crossing back above the SMA and triggering an *)
 (* exit. *)
-(* *)
-(* The notebook is intentionally sized above the ~60-day target so that *)
-(* the 20-day SMA has ≥70 days of valid signal and all three shock/revert *)
-(* cycles sit well inside the active window. *)
 
 (* %% vscode={"languageId": "ocaml"} *)
-let n_days = 90
-
-let price_values =
-  Array.init n_days (fun i ->
-      let t = float_of_int i in
-      let base =
-        100.0 +. (0.05 *. t) +. (2.0 *. sin (2.0 *. Float.pi *. t /. 12.0))
-      in
-      let shock =
-        if i = 32 then -9.0
-        else if i = 57 then -10.0
-        else if i = 80 then -8.0
-        else 0.0
-      in
-      base +. shock)
-
-let date_strings =
-  (* Consecutive calendar days starting 2025-01-02. Index.daily only
-     requires strictly monotonic ISO-8601 strings, not a business-day
-     calendar. *)
-  let start =
-    match Ptime.of_date (2025, 1, 2) with
-    | Some t -> t
-    | None -> failwith "invalid start date"
-  in
-  let one_day = Ptime.Span.of_int_s (24 * 3600) in
-  Array.init n_days (fun i ->
-      let rec advance t k =
-        if k = 0 then t
-        else
-          match Ptime.add_span t one_day with
-          | Some t' -> advance t' (k - 1)
-          | None -> failwith "ptime overflow"
-      in
-      let t = advance start i in
-      let (y, m, d), _ = Ptime.to_date_time t in
-      Printf.sprintf "%04d-%02d-%02d" y m d)
-
 let prices =
-  let idx = unwrap_index "Index.daily" (Index.daily date_strings) in
-  unwrap "Series.make"
-    (Series.make idx (Nx.create Nx.float64 [| n_days |] price_values))
+  unwrap "Cairos_io.of_csv"
+    (Cairos_io.of_csv ~freq:Freq.Day "data/03_bollinger_reversion.csv")
 
 let () = Cairos_jupyter.pp_series "prices" prices
 
