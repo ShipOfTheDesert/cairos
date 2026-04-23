@@ -25,7 +25,8 @@ just test             # run all unit tests via dune
 Unit tests live under `test/unit/` organised per package:
 
 ```
-test/unit/cairos/          # Index, Series, Align, Window, Resample, Frame
+test/unit/cairos/          # Index, Series, Align, Window, Resample, Frame, Nonempty
+test/unit/cairos_io/       # CSV loading: of_csv, frame_of_csv, error surface
 test/unit/cairos_finance/  # returns, drawdown, vol, sharpe — verified against known values
 test/unit/cairos_plot/     # SVG output, chart rendering
 ```

@@ -258,6 +258,48 @@ let frame_of_csv_with_narrow_first_row_returns_error () =
   |> check_error ~label:"frame narrow first row"
        ~needles:[ "line 1"; "expected at least 4"; "found 2" ]
 
+let frame_of_csv_non_monotonic_timestamps_reports_line () =
+  (* Mirror of [of_csv_non_monotonic_timestamps_reports_line] on the frame
+     path: pins that the index-error → CSV-line translation fires identically
+     for [frame_of_csv]. Line 4 = data row with the back-step timestamp. *)
+  Cairos_io.frame_of_csv ~freq:Cairos.Freq.Day
+    (fixture "frame_non_monotonic.csv")
+  |> check_error ~label:"frame non-monotonic at line 4" ~needles:[ "line 4" ]
+
+let frame_of_csv_with_no_header_wider_subsequent_rows_truncates_silently () =
+  (* Documents current behaviour: when [~header:false], [collect_frame_columns]
+     derives the column count from row 1's width. Cells in subsequent rows
+     beyond that width are silently ignored. Pins the contract so a future
+     change (e.g. erroring on width-drift) is a deliberate decision, not an
+     accident. *)
+  match
+    Cairos_io.frame_of_csv_with ~freq:Cairos.Freq.Day ~header:false
+      ~timestamp_col:0
+      (fixture "frame_no_header_wider_subsequent.csv")
+  with
+  | Error e -> Alcotest.fail e
+  | Ok frame ->
+      Alcotest.(check (list string))
+        "columns derived from first row width" [ "col_1"; "col_2" ]
+        (Cairos.Frame.columns frame);
+      let c1 = get_series "col_1" frame in
+      let c2 = get_series "col_2" frame in
+      Alcotest.(check (array (float 0.0)))
+        "col_1 values: extras in row 2 ignored" [| 100.0; 101.0; 102.0 |]
+        (values_to_array c1);
+      Alcotest.(check (array (float 0.0)))
+        "col_2 values: extras in row 2 ignored" [| 200.0; 201.0; 202.0 |]
+        (values_to_array c2)
+
+let of_csv_quoted_field_is_unsupported () =
+  (* Pins FR-9's "Quoting: none" boundary documented in cairos_io.mli. A
+     timestamp wrapped in literal double quotes is not stripped — it flows
+     to Index.daily verbatim and surfaces as Unparseable_timestamp at line 2.
+     A future PRD that adopts ocaml-csv would need to delete or re-purpose
+     this test. *)
+  Cairos_io.of_csv ~freq:Cairos.Freq.Day (fixture "single_quoted_timestamp.csv")
+  |> check_error ~label:"quoted timestamp not supported" ~needles:[ "line 2" ]
+
 let frame_of_csv_with_timestamp_only_file_returns_empty_frame_columns () =
   (* Single-column file with [~header:false ~timestamp_col:0] leaves zero
      instrument columns after filtering — exercises the [Empty_frame_columns]
@@ -422,5 +464,18 @@ let () =
             frame_of_csv_with_narrow_first_row_returns_error;
           Alcotest.test_case "frame with only a timestamp column" `Quick
             frame_of_csv_with_timestamp_only_file_returns_empty_frame_columns;
+          Alcotest.test_case "frame non-monotonic timestamps reports line"
+            `Quick frame_of_csv_non_monotonic_timestamps_reports_line;
+        ] );
+      ( "frame format quirks",
+        [
+          Alcotest.test_case
+            "frame_of_csv_with no-header wider subsequent rows truncate" `Quick
+            frame_of_csv_with_no_header_wider_subsequent_rows_truncates_silently;
+        ] );
+      ( "format boundary",
+        [
+          Alcotest.test_case "quoted fields are not supported (FR-9)" `Quick
+            of_csv_quoted_field_is_unsupported;
         ] );
     ]

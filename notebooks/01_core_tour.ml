@@ -34,6 +34,7 @@
 #load "stdlib.cma"
 
 #require "cairos"
+#require "cairos_io"
 #require "cairos_finance"
 #require "cairos_plot"
 
@@ -46,158 +47,23 @@
 (* %% vscode={"languageId": "ocaml"} *)
 open Cairos
 
-let ( let* ) = Result.bind
-
 (* %% [markdown] *)
 (* ## Constructing a Daily Price Series *)
 (* *)
-(* `Index.daily` parses ISO 8601 date strings into a frequency-tagged *)
-(* `[`Daily] Index.t`, and `Series.make` pairs it with an `Nx.t` of *)
-(* matching length. Both return `result`, so we compose them with `let*` *)
-(* and unwrap the final pipeline value once with `failwith` — per the *)
-(* notebook convention, fail loudly at the first boundary and let the *)
-(* rest of the file assume clean inputs. *)
+(* `Cairos_io.of_csv` loads a two-column CSV (date, price) and returns a *)
+(* frequency-tagged `[`Daily] Series.t` directly — the timestamp index is *)
+(* parsed and validated for monotonicity inside the loader, so the *)
+(* notebook never touches `Ptime` or `Index.daily`. The result is *)
+(* unwrapped at the boundary per the notebook convention: crash loudly on *)
+(* a load failure, let the rest of the file assume clean inputs. *)
 
 (* %% vscode={"languageId": "ocaml"} *)
 let prices =
-  let dates =
-    [|
-      "2025-01-02";
-      "2025-01-03";
-      "2025-01-06";
-      "2025-01-07";
-      "2025-01-08";
-      "2025-01-09";
-      "2025-01-10";
-      "2025-01-13";
-      "2025-01-14";
-      "2025-01-15";
-      "2025-01-16";
-      "2025-01-17";
-      "2025-01-20";
-      "2025-01-21";
-      "2025-01-22";
-      "2025-01-23";
-      "2025-01-24";
-      "2025-01-27";
-      "2025-01-28";
-      "2025-01-29";
-      "2025-01-30";
-      "2025-01-31";
-      "2025-02-03";
-      "2025-02-04";
-      "2025-02-05";
-      "2025-02-06";
-      "2025-02-07";
-      "2025-02-10";
-      "2025-02-11";
-      "2025-02-12";
-      "2025-02-13";
-      "2025-02-14";
-      "2025-02-17";
-      "2025-02-18";
-      "2025-02-19";
-      "2025-02-20";
-      "2025-02-21";
-      "2025-02-24";
-      "2025-02-25";
-      "2025-02-26";
-      "2025-02-27";
-      "2025-02-28";
-      "2025-03-03";
-      "2025-03-04";
-      "2025-03-05";
-      "2025-03-06";
-      "2025-03-07";
-      "2025-03-10";
-      "2025-03-11";
-      "2025-03-12";
-      "2025-03-13";
-      "2025-03-14";
-      "2025-03-17";
-      "2025-03-18";
-      "2025-03-19";
-      "2025-03-20";
-      "2025-03-21";
-      "2025-03-24";
-      "2025-03-25";
-      "2025-03-26";
-    |]
-  in
-  let values =
-    [|
-      100.0;
-      101.5;
-      102.0;
-      101.0;
-      103.0;
-      104.5;
-      105.0;
-      104.0;
-      103.5;
-      105.0;
-      106.5;
-      107.0;
-      108.0;
-      107.5;
-      109.0;
-      110.0;
-      111.5;
-      112.0;
-      111.0;
-      113.0;
-      114.5;
-      115.0;
-      114.0;
-      113.5;
-      115.0;
-      116.5;
-      117.0;
-      118.0;
-      117.5;
-      119.0;
-      120.0;
-      121.5;
-      122.0;
-      121.0;
-      123.0;
-      124.5;
-      125.0;
-      124.0;
-      123.5;
-      125.0;
-      126.5;
-      127.0;
-      128.0;
-      127.5;
-      129.0;
-      130.0;
-      131.5;
-      132.0;
-      131.0;
-      133.0;
-      134.5;
-      135.0;
-      134.0;
-      133.5;
-      135.0;
-      136.5;
-      137.0;
-      138.0;
-      137.5;
-      139.0;
-    |]
-  in
-  let* idx =
-    Result.map_error Cairos.Index.err_to_string (Index.daily dates)
-  in
-  Series.make idx (Nx.create Nx.float64 [| Array.length values |] values)
-
-let prices =
-  match prices with
+  match
+    Cairos_io.of_csv ~freq:Freq.Day "data/01_core_tour.csv"
+  with
   | Ok s -> s
-  | Error e ->
-      failwith (Printf.sprintf "Price series construction failed: %s" e)
+  | Error e -> failwith (Printf.sprintf "Price series load failed: %s" e)
 
 let () = Cairos_jupyter.pp_series "prices" prices
 

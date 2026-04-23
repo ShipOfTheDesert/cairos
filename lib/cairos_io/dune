@@ -1,4 +1,4 @@
 (library
  (name cairos_io)
  (public_name cairos_io)
- (libraries cairos nx))
+ (libraries cairos nx bigarray))
