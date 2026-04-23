@@ -22,7 +22,7 @@ let make_input () =
   let idx =
     match Cairos.Index.of_unix_floats Cairos.Freq.Day ts with
     | Ok i -> i
-    | Error e -> failwith ("bench input index: " ^ e)
+    | Error e -> failwith ("bench input index: " ^ Cairos.Index.err_to_string e)
   in
   let rng = Random.State.make [| seed |] in
   let values =

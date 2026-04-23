@@ -35,6 +35,7 @@
 #load "stdlib.cma"
 
 #require "cairos"
+#require "cairos_io"
 #require "cairos_finance"
 #require "cairos_plot"
 
@@ -62,9 +63,12 @@
 open Cairos
 
 (* %% [markdown] *)
-(* ## Synthetic price series *)
+(* ## Price series (loaded from CSV) *)
 (* *)
-(* A 90-day daily price series built from a drifting mean plus a *)
+(* A 90-day daily price series loaded from `data/02_sma_crossover.csv` via *)
+(* `Cairos_io.of_csv`, demonstrating the canonical entry point: hand the *)
+(* loader a path and a `Freq.t` witness and receive a typed, indexed *)
+(* `Series.t` directly. The CSV was generated from a drifting mean plus a *)
 (* period-30 sinusoid: *)
 (* *)
 (* ```text *)
@@ -76,46 +80,11 @@ open Cairos
 (* sinusoid with some damping. This produces multiple fast-above-slow *)
 (* crossings in the valid-signal window (days 49..89), so the signal is *)
 (* not constant and the strategy metrics are not trivially zero. *)
-(* *)
-(* The notebook is intentionally sized slightly above the ~60-day target *)
-(* so that the 50-day slow SMA has ≥30 days of valid signal to exhibit *)
-(* crossings — anything much shorter collapses the signal window to a *)
-(* handful of points and makes the metrics pathological. *)
 
 (* %% vscode={"languageId": "ocaml"} *)
-let n_days = 90
-
-let price_values =
-  Array.init n_days (fun i ->
-      let t = float_of_int i in
-      100.0 +. (0.1 *. t) +. (6.0 *. sin (2.0 *. Float.pi *. t /. 30.0)))
-
-let date_strings =
-  (* Consecutive calendar days starting 2025-01-02. Index.daily only
-     requires strictly monotonic ISO-8601 strings, not a business-day
-     calendar. *)
-  let start =
-    match Ptime.of_date (2025, 1, 2) with
-    | Some t -> t
-    | None -> failwith "invalid start date"
-  in
-  let one_day = Ptime.Span.of_int_s (24 * 3600) in
-  Array.init n_days (fun i ->
-      let rec advance t k =
-        if k = 0 then t
-        else
-          match Ptime.add_span t one_day with
-          | Some t' -> advance t' (k - 1)
-          | None -> failwith "ptime overflow"
-      in
-      let t = advance start i in
-      let (y, m, d), _ = Ptime.to_date_time t in
-      Printf.sprintf "%04d-%02d-%02d" y m d)
-
 let prices =
-  let idx = unwrap "Index.daily" (Index.daily date_strings) in
-  unwrap "Series.make"
-    (Series.make idx (Nx.create Nx.float64 [| n_days |] price_values))
+  unwrap "Cairos_io.of_csv"
+    (Cairos_io.of_csv ~freq:Freq.Day "data/02_sma_crossover.csv")
 
 let () = Cairos_jupyter.pp_series "prices" prices
 

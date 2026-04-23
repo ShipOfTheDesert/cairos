@@ -13,7 +13,7 @@ let make_daily_series_from_floats (xs : float array) :
   let idx =
     match Cairos.Index.of_unix_floats Cairos.Freq.Day ts with
     | Ok i -> i
-    | Error e -> failwith ("generator index: " ^ e)
+    | Error e -> failwith ("generator index: " ^ Cairos.Index.err_to_string e)
   in
   let values = Nx.create Nx.float64 [| n |] xs in
   match Cairos.Series.make idx values with
@@ -87,7 +87,7 @@ let pct_change_value_semantics =
 
 let make_succeeds_with_matching_lengths () =
   match Cairos.Index.daily [| "2024-01-01"; "2024-01-02"; "2024-01-03" |] with
-  | Error e -> Alcotest.fail e
+  | Error e -> Alcotest.fail (Cairos.Index.err_to_string e)
   | Ok idx -> (
       let values = Nx.create Nx.float64 [| 3 |] [| 10.0; 20.0; 30.0 |] in
       match Cairos.Series.make idx values with
@@ -96,7 +96,7 @@ let make_succeeds_with_matching_lengths () =
 
 let make_fails_with_mismatched_lengths () =
   match Cairos.Index.daily [| "2024-01-01"; "2024-01-02"; "2024-01-03" |] with
-  | Error e -> Alcotest.fail e
+  | Error e -> Alcotest.fail (Cairos.Index.err_to_string e)
   | Ok idx -> (
       let values = Nx.create Nx.float64 [| 5 |] [| 1.0; 2.0; 3.0; 4.0; 5.0 |] in
       match Cairos.Series.make idx values with
@@ -108,7 +108,7 @@ let slice_produces_correct_subseries () =
     Cairos.Index.daily
       [| "2024-01-01"; "2024-01-02"; "2024-01-03"; "2024-01-04" |]
   with
-  | Error e -> Alcotest.fail e
+  | Error e -> Alcotest.fail (Cairos.Index.err_to_string e)
   | Ok idx -> (
       let values = Nx.create Nx.float64 [| 4 |] [| 10.0; 20.0; 30.0; 40.0 |] in
       match Cairos.Series.make idx values with
@@ -122,7 +122,7 @@ let slice_produces_correct_subseries () =
 
 let map_transforms_values_and_preserves_index () =
   match Cairos.Index.daily [| "2024-01-01"; "2024-01-02"; "2024-01-03" |] with
-  | Error e -> Alcotest.fail e
+  | Error e -> Alcotest.fail (Cairos.Index.err_to_string e)
   | Ok idx -> (
       let values = Nx.create Nx.float64 [| 3 |] [| 1.0; 2.0; 3.0 |] in
       match Cairos.Series.make idx values with
@@ -148,7 +148,7 @@ let map_transforms_values_and_preserves_index () =
 
 let empty_series_succeeds () =
   match Cairos.Index.daily [||] with
-  | Error e -> Alcotest.fail e
+  | Error e -> Alcotest.fail (Cairos.Index.err_to_string e)
   | Ok idx -> (
       let values = Nx.create Nx.float64 [| 0 |] [||] in
       match Cairos.Series.make idx values with
@@ -157,7 +157,7 @@ let empty_series_succeeds () =
 
 let slice_empty_range_produces_empty_series () =
   match Cairos.Index.daily [| "2024-01-01"; "2024-01-02"; "2024-01-03" |] with
-  | Error e -> Alcotest.fail e
+  | Error e -> Alcotest.fail (Cairos.Index.err_to_string e)
   | Ok idx -> (
       let values = Nx.create Nx.float64 [| 3 |] [| 1.0; 2.0; 3.0 |] in
       match Cairos.Series.make idx values with

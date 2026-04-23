@@ -6,7 +6,7 @@ let ptime_testable =
 let daily_parses_valid_iso8601 () =
   let result = Cairos.Index.daily [| "2024-01-15"; "2024-01-16" |] in
   match result with
-  | Error e -> Alcotest.fail e
+  | Error e -> Alcotest.fail (Cairos.Index.err_to_string e)
   | Ok idx ->
       Alcotest.(check int) "length is 2" 2 (Cairos.Index.length idx);
       let ts = Cairos.Index.timestamps idx in
@@ -27,16 +27,17 @@ let smart_constructor_rejects_malformed_input () =
   let result = Cairos.Index.daily [| "2024-01-15"; "not-a-date" |] in
   match result with
   | Ok _ -> Alcotest.fail "expected Error for malformed input"
-  | Error msg ->
+  | Error e ->
       Alcotest.(check string)
-        "error message" "invalid timestamp at position 1: not-a-date" msg
+        "error message" "invalid timestamp at position 1: not-a-date"
+        (Cairos.Index.err_to_string e)
 
 let all_four_constructors_accept_valid_input () =
   let ts = "2024-06-03T10:30:00Z" in
   let check_ok name result =
     match result with
     | Ok _ -> ()
-    | Error e -> Alcotest.fail (name ^ ": " ^ e)
+    | Error e -> Alcotest.fail (name ^ ": " ^ Cairos.Index.err_to_string e)
   in
   check_ok "daily" (Cairos.Index.daily [| ts |]);
   check_ok "minute" (Cairos.Index.minute [| ts |]);
@@ -47,7 +48,7 @@ let of_unix_floats_produces_correct_timestamps () =
   let f1 = 1_700_000_000.0 in
   let f2 = 1_700_086_400.0 in
   match Cairos.Index.of_unix_floats Cairos.Freq.Day [| f1; f2 |] with
-  | Error e -> Alcotest.fail e
+  | Error e -> Alcotest.fail (Cairos.Index.err_to_string e)
   | Ok idx ->
       Alcotest.(check int) "length is 2" 2 (Cairos.Index.length idx);
       let ts = Cairos.Index.timestamps idx in
@@ -69,7 +70,7 @@ let slice_extracts_subrange () =
     Cairos.Index.daily
       [| "2024-01-01"; "2024-01-02"; "2024-01-03"; "2024-01-04"; "2024-01-05" |]
   with
-  | Error e -> Alcotest.fail e
+  | Error e -> Alcotest.fail (Cairos.Index.err_to_string e)
   | Ok idx ->
       let sliced = Cairos.Index.slice ~start:1 ~stop:3 idx in
       Alcotest.(check int) "sliced length" 2 (Cairos.Index.length sliced);
@@ -89,14 +90,14 @@ let slice_extracts_subrange () =
 
 let slice_clamps_out_of_bounds () =
   match Cairos.Index.daily [| "2024-01-01"; "2024-01-02"; "2024-01-03" |] with
-  | Error e -> Alcotest.fail e
+  | Error e -> Alcotest.fail (Cairos.Index.err_to_string e)
   | Ok idx ->
       let sliced = Cairos.Index.slice ~start:(-1) ~stop:100 idx in
       Alcotest.(check int) "clamped length" 3 (Cairos.Index.length sliced)
 
 let empty_array_produces_empty_index () =
   match Cairos.Index.daily [||] with
-  | Error e -> Alcotest.fail e
+  | Error e -> Alcotest.fail (Cairos.Index.err_to_string e)
   | Ok idx -> Alcotest.(check int) "length is 0" 0 (Cairos.Index.length idx)
 
 let of_unix_floats_rejects_invalid_values () =
@@ -105,18 +106,20 @@ let of_unix_floats_rejects_invalid_values () =
        [| 1_700_000_000.0; Float.nan |]
    with
   | Ok _ -> Alcotest.fail "expected Error for NaN"
-  | Error msg ->
+  | Error e ->
       Alcotest.(check string)
-        "rejects nan" "invalid unix timestamp at position 1: nan" msg);
+        "rejects nan" "invalid unix timestamp at position 1: nan"
+        (Cairos.Index.err_to_string e));
   match Cairos.Index.of_unix_floats Cairos.Freq.Day [| Float.infinity |] with
   | Ok _ -> Alcotest.fail "expected Error for infinity"
-  | Error msg ->
+  | Error e ->
       Alcotest.(check string)
-        "rejects infinity" "invalid unix timestamp at position 0: inf" msg
+        "rejects infinity" "invalid unix timestamp at position 0: inf"
+        (Cairos.Index.err_to_string e)
 
 let slice_start_geq_stop_produces_empty () =
   match Cairos.Index.daily [| "2024-01-01"; "2024-01-02"; "2024-01-03" |] with
-  | Error e -> Alcotest.fail e
+  | Error e -> Alcotest.fail (Cairos.Index.err_to_string e)
   | Ok idx ->
       let sliced = Cairos.Index.slice ~start:2 ~stop:1 idx in
       Alcotest.(check int)
@@ -125,7 +128,7 @@ let slice_start_geq_stop_produces_empty () =
 
 let timestamps_returns_defensive_copy () =
   match Cairos.Index.daily [| "2024-01-01"; "2024-01-02" |] with
-  | Error e -> Alcotest.fail e
+  | Error e -> Alcotest.fail (Cairos.Index.err_to_string e)
   | Ok idx ->
       let ts = Cairos.Index.timestamps idx in
       ts.(0) <- Ptime.epoch;
@@ -141,14 +144,16 @@ let timestamps_returns_defensive_copy () =
 let rejects_non_monotonic_or_duplicate_timestamps () =
   (match Cairos.Index.daily [| "2024-01-03"; "2024-01-02"; "2024-01-01" |] with
   | Ok _ -> Alcotest.fail "expected Error for non-monotonic timestamps"
-  | Error msg ->
+  | Error e ->
       Alcotest.(check string)
-        "descending" "timestamps not strictly monotonic at position 1" msg);
+        "descending" "timestamps not strictly monotonic at position 1"
+        (Cairos.Index.err_to_string e));
   match Cairos.Index.daily [| "2024-01-01"; "2024-01-01" |] with
   | Ok _ -> Alcotest.fail "expected Error for duplicate timestamps"
-  | Error msg ->
+  | Error e ->
       Alcotest.(check string)
-        "duplicate" "timestamps not strictly monotonic at position 1" msg
+        "duplicate" "timestamps not strictly monotonic at position 1"
+        (Cairos.Index.err_to_string e)
 
 let of_unix_floats_rejects_non_monotonic () =
   match
@@ -156,13 +161,14 @@ let of_unix_floats_rejects_non_monotonic () =
       [| 1_700_086_400.0; 1_700_000_000.0 |]
   with
   | Ok _ -> Alcotest.fail "expected Error for non-monotonic floats"
-  | Error msg ->
+  | Error e ->
       Alcotest.(check string)
-        "error message" "timestamps not strictly monotonic at position 1" msg
+        "error message" "timestamps not strictly monotonic at position 1"
+        (Cairos.Index.err_to_string e)
 
 let of_unix_floats_empty_array () =
   match Cairos.Index.of_unix_floats Cairos.Freq.Day [||] with
-  | Error e -> Alcotest.fail e
+  | Error e -> Alcotest.fail (Cairos.Index.err_to_string e)
   | Ok idx -> Alcotest.(check int) "length is 0" 0 (Cairos.Index.length idx)
 
 let tests =

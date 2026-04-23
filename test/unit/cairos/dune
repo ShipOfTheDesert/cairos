@@ -58,3 +58,9 @@
  (package cairos)
  (modules test_series_dropna)
  (libraries cairos nx ptime alcotest qcheck-core qcheck-alcotest))
+
+(test
+ (name test_nonempty)
+ (package cairos)
+ (modules test_nonempty)
+ (libraries cairos alcotest qcheck-core qcheck-alcotest))

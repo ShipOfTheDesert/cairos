@@ -4,7 +4,7 @@ let dates_3 = [| "2024-01-01"; "2024-01-02"; "2024-01-03" |]
 
 let of_series_single_column () =
   let s = Test_helpers.make_daily_series dates_3 [| 100.0; 200.0; 300.0 |] in
-  match Cairos.Frame.of_series [ ("price", s) ] with
+  match Cairos.Frame.of_series (Cairos.Nonempty.singleton ("price", s)) with
   | Error e -> Alcotest.fail e
   | Ok frame -> (
       Alcotest.(check (list string))
@@ -28,7 +28,8 @@ let of_series_multiple_columns () =
   let sma = Test_helpers.make_daily_series dates_3 [| 10.0; 20.0; 30.0 |] in
   match
     Cairos.Frame.of_series
-      [ ("price", price); ("volume", volume); ("sma", sma) ]
+      (Cairos.Nonempty.make ("price", price)
+         [ ("volume", volume); ("sma", sma) ])
   with
   | Error e -> Alcotest.fail e
   | Ok frame -> (
@@ -46,11 +47,6 @@ let of_series_multiple_columns () =
 
 (* --- Construction (error cases) --- *)
 
-let of_series_empty_list () =
-  match Cairos.Frame.of_series [] with
-  | Ok _ -> Alcotest.fail "expected Error for empty list"
-  | Error _ -> ()
-
 let of_series_length_mismatch () =
   let s3 = Test_helpers.make_daily_series dates_3 [| 1.0; 2.0; 3.0 |] in
   let s2 =
@@ -58,7 +54,9 @@ let of_series_length_mismatch () =
       [| "2024-01-01"; "2024-01-02" |]
       [| 10.0; 20.0 |]
   in
-  match Cairos.Frame.of_series [ ("a", s3); ("b", s2) ] with
+  match
+    Cairos.Frame.of_series (Cairos.Nonempty.make ("a", s3) [ ("b", s2) ])
+  with
   | Ok _ -> Alcotest.fail "expected Error for length mismatch"
   | Error msg ->
       Alcotest.(check bool) "mentions column name" true (String.length msg > 0)
@@ -70,7 +68,9 @@ let of_series_timestamp_mismatch () =
       [| "2024-01-01"; "2024-01-02"; "2024-01-04" |]
       [| 10.0; 20.0; 30.0 |]
   in
-  match Cairos.Frame.of_series [ ("a", s1); ("b", s2) ] with
+  match
+    Cairos.Frame.of_series (Cairos.Nonempty.make ("a", s1) [ ("b", s2) ])
+  with
   | Ok _ -> Alcotest.fail "expected Error for timestamp mismatch"
   | Error msg ->
       Alcotest.(check bool) "mentions column name" true (String.length msg > 0)
@@ -87,7 +87,8 @@ let get_existing_column () =
   let sma = Test_helpers.make_daily_series dates_3 [| 10.0; 20.0; 30.0 |] in
   match
     Cairos.Frame.of_series
-      [ ("price", price); ("volume", volume); ("sma", sma) ]
+      (Cairos.Nonempty.make ("price", price)
+         [ ("volume", volume); ("sma", sma) ])
   with
   | Error e -> Alcotest.fail e
   | Ok frame -> (
@@ -104,7 +105,7 @@ let get_existing_column () =
 
 let get_missing_column () =
   let s = Test_helpers.make_daily_series dates_3 [| 1.0; 2.0; 3.0 |] in
-  match Cairos.Frame.of_series [ ("price", s) ] with
+  match Cairos.Frame.of_series (Cairos.Nonempty.singleton ("price", s)) with
   | Error e -> Alcotest.fail e
   | Ok frame ->
       Alcotest.(check bool)
@@ -117,7 +118,10 @@ let columns_preserves_insertion_order () =
   let s1 = Test_helpers.make_daily_series dates_3 [| 1.0; 2.0; 3.0 |] in
   let s2 = Test_helpers.make_daily_series dates_3 [| 4.0; 5.0; 6.0 |] in
   let s3 = Test_helpers.make_daily_series dates_3 [| 7.0; 8.0; 9.0 |] in
-  match Cairos.Frame.of_series [ ("c", s1); ("a", s2); ("b", s3) ] with
+  match
+    Cairos.Frame.of_series
+      (Cairos.Nonempty.make ("c", s1) [ ("a", s2); ("b", s3) ])
+  with
   | Error e -> Alcotest.fail e
   | Ok frame ->
       Alcotest.(check (list string))
@@ -127,7 +131,10 @@ let columns_preserves_insertion_order () =
 let of_series_duplicate_column_name () =
   let s1 = Test_helpers.make_daily_series dates_3 [| 1.0; 2.0; 3.0 |] in
   let s2 = Test_helpers.make_daily_series dates_3 [| 4.0; 5.0; 6.0 |] in
-  match Cairos.Frame.of_series [ ("price", s1); ("price", s2) ] with
+  match
+    Cairos.Frame.of_series
+      (Cairos.Nonempty.make ("price", s1) [ ("price", s2) ])
+  with
   | Ok _ -> Alcotest.fail "expected Error for duplicate column name"
   | Error msg ->
       Alcotest.(check bool) "mentions column name" true (String.length msg > 0)
@@ -145,7 +152,10 @@ let frame_head_returns_first_n_rows () =
     Test_helpers.make_daily_series dates_5
       [| 100.0; 200.0; 300.0; 400.0; 500.0 |]
   in
-  match Cairos.Frame.of_series [ ("price", price); ("volume", volume) ] with
+  match
+    Cairos.Frame.of_series
+      (Cairos.Nonempty.make ("price", price) [ ("volume", volume) ])
+  with
   | Error e -> Alcotest.fail e
   | Ok frame ->
       let h = Cairos.Frame.head 3 frame in
@@ -170,7 +180,7 @@ let frame_head_returns_first_n_rows () =
 
 let frame_head_clamps_to_length () =
   let s = Test_helpers.make_daily_series dates_3 [| 1.0; 2.0; 3.0 |] in
-  match Cairos.Frame.of_series [ ("a", s) ] with
+  match Cairos.Frame.of_series (Cairos.Nonempty.singleton ("a", s)) with
   | Error e -> Alcotest.fail e
   | Ok frame ->
       let h = Cairos.Frame.head 10 frame in
@@ -183,7 +193,10 @@ let frame_head_preserves_column_order () =
   let s1 = Test_helpers.make_daily_series dates_3 [| 1.0; 2.0; 3.0 |] in
   let s2 = Test_helpers.make_daily_series dates_3 [| 4.0; 5.0; 6.0 |] in
   let s3 = Test_helpers.make_daily_series dates_3 [| 7.0; 8.0; 9.0 |] in
-  match Cairos.Frame.of_series [ ("z", s1); ("a", s2); ("m", s3) ] with
+  match
+    Cairos.Frame.of_series
+      (Cairos.Nonempty.make ("z", s1) [ ("a", s2); ("m", s3) ])
+  with
   | Error e -> Alcotest.fail e
   | Ok frame ->
       let h = Cairos.Frame.head 2 frame in
@@ -198,7 +211,10 @@ let frame_tail_returns_last_n_rows () =
     Test_helpers.make_daily_series dates_5
       [| 100.0; 200.0; 300.0; 400.0; 500.0 |]
   in
-  match Cairos.Frame.of_series [ ("price", price); ("volume", volume) ] with
+  match
+    Cairos.Frame.of_series
+      (Cairos.Nonempty.make ("price", price) [ ("volume", volume) ])
+  with
   | Error e -> Alcotest.fail e
   | Ok frame ->
       let tl = Cairos.Frame.tail 3 frame in
@@ -223,7 +239,7 @@ let frame_tail_returns_last_n_rows () =
 
 let frame_tail_clamps_to_length () =
   let s = Test_helpers.make_daily_series dates_3 [| 1.0; 2.0; 3.0 |] in
-  match Cairos.Frame.of_series [ ("a", s) ] with
+  match Cairos.Frame.of_series (Cairos.Nonempty.singleton ("a", s)) with
   | Error e -> Alcotest.fail e
   | Ok frame ->
       let tl = Cairos.Frame.tail 10 frame in
@@ -234,7 +250,7 @@ let frame_tail_clamps_to_length () =
 
 let frame_head_zero_returns_empty () =
   let s = Test_helpers.make_daily_series dates_3 [| 1.0; 2.0; 3.0 |] in
-  match Cairos.Frame.of_series [ ("a", s) ] with
+  match Cairos.Frame.of_series (Cairos.Nonempty.singleton ("a", s)) with
   | Error e -> Alcotest.fail e
   | Ok frame ->
       let h = Cairos.Frame.head 0 frame in
@@ -252,7 +268,7 @@ let describe_computes_stats_for_each_column () =
   let b =
     Test_helpers.make_daily_series dates_5 [| 10.0; 20.0; 30.0; 40.0; 50.0 |]
   in
-  match Cairos.Frame.of_series [ ("a", a); ("b", b) ] with
+  match Cairos.Frame.of_series (Cairos.Nonempty.make ("a", a) [ ("b", b) ]) with
   | Error e -> Alcotest.fail e
   | Ok frame ->
       let stats = Cairos.Frame.describe frame in
@@ -280,7 +296,7 @@ let describe_excludes_nan_from_stats () =
     Test_helpers.make_daily_series dates_5
       [| 1.0; Float.nan; 3.0; Float.nan; 5.0 |]
   in
-  match Cairos.Frame.of_series [ ("x", s) ] with
+  match Cairos.Frame.of_series (Cairos.Nonempty.singleton ("x", s)) with
   | Error e -> Alcotest.fail e
   | Ok frame ->
       let stats = Cairos.Frame.describe frame in
@@ -294,7 +310,7 @@ let describe_all_nan_column () =
   let s =
     Test_helpers.make_daily_series dates_3 [| Float.nan; Float.nan; Float.nan |]
   in
-  match Cairos.Frame.of_series [ ("x", s) ] with
+  match Cairos.Frame.of_series (Cairos.Nonempty.singleton ("x", s)) with
   | Error e -> Alcotest.fail e
   | Ok frame ->
       let stats = Cairos.Frame.describe frame in
@@ -312,7 +328,10 @@ let describe_preserves_column_order () =
   let s1 = Test_helpers.make_daily_series dates_3 [| 1.0; 2.0; 3.0 |] in
   let s2 = Test_helpers.make_daily_series dates_3 [| 4.0; 5.0; 6.0 |] in
   let s3 = Test_helpers.make_daily_series dates_3 [| 7.0; 8.0; 9.0 |] in
-  match Cairos.Frame.of_series [ ("z", s1); ("a", s2); ("m", s3) ] with
+  match
+    Cairos.Frame.of_series
+      (Cairos.Nonempty.make ("z", s1) [ ("a", s2); ("m", s3) ])
+  with
   | Error e -> Alcotest.fail e
   | Ok frame ->
       let stats = Cairos.Frame.describe frame in
@@ -322,7 +341,7 @@ let describe_preserves_column_order () =
 let describe_single_value_column () =
   let dates_1 = [| "2024-01-01" |] in
   let s = Test_helpers.make_daily_series dates_1 [| 42.0 |] in
-  match Cairos.Frame.of_series [ ("x", s) ] with
+  match Cairos.Frame.of_series (Cairos.Nonempty.singleton ("x", s)) with
   | Error e -> Alcotest.fail e
   | Ok frame ->
       let stats = Cairos.Frame.describe frame in
@@ -338,7 +357,7 @@ let describe_single_value_column () =
 
 let frame_tail_zero_returns_empty () =
   let s = Test_helpers.make_daily_series dates_3 [| 1.0; 2.0; 3.0 |] in
-  match Cairos.Frame.of_series [ ("a", s) ] with
+  match Cairos.Frame.of_series (Cairos.Nonempty.singleton ("a", s)) with
   | Error e -> Alcotest.fail e
   | Ok frame ->
       let tl = Cairos.Frame.tail 0 frame in
@@ -349,7 +368,7 @@ let frame_tail_zero_returns_empty () =
 
 let frame_head_negative_returns_empty () =
   let s = Test_helpers.make_daily_series dates_3 [| 1.0; 2.0; 3.0 |] in
-  match Cairos.Frame.of_series [ ("a", s) ] with
+  match Cairos.Frame.of_series (Cairos.Nonempty.singleton ("a", s)) with
   | Error e -> Alcotest.fail e
   | Ok frame ->
       let h = Cairos.Frame.head (-1) frame in
@@ -360,7 +379,7 @@ let frame_head_negative_returns_empty () =
 
 let frame_tail_negative_returns_empty () =
   let s = Test_helpers.make_daily_series dates_3 [| 1.0; 2.0; 3.0 |] in
-  match Cairos.Frame.of_series [ ("a", s) ] with
+  match Cairos.Frame.of_series (Cairos.Nonempty.singleton ("a", s)) with
   | Error e -> Alcotest.fail e
   | Ok frame ->
       let tl = Cairos.Frame.tail (-1) frame in
@@ -371,7 +390,7 @@ let frame_tail_negative_returns_empty () =
 
 let frame_head_empty_frame () =
   let s = Test_helpers.make_daily_series [||] [||] in
-  match Cairos.Frame.of_series [ ("a", s) ] with
+  match Cairos.Frame.of_series (Cairos.Nonempty.singleton ("a", s)) with
   | Error e -> Alcotest.fail e
   | Ok frame ->
       let h = Cairos.Frame.head 3 frame in
@@ -382,7 +401,7 @@ let frame_head_empty_frame () =
 
 let frame_tail_empty_frame () =
   let s = Test_helpers.make_daily_series [||] [||] in
-  match Cairos.Frame.of_series [ ("a", s) ] with
+  match Cairos.Frame.of_series (Cairos.Nonempty.singleton ("a", s)) with
   | Error e -> Alcotest.fail e
   | Ok frame ->
       let tl = Cairos.Frame.tail 3 frame in
@@ -393,7 +412,7 @@ let frame_tail_empty_frame () =
 
 let describe_empty_frame () =
   let s = Test_helpers.make_daily_series [||] [||] in
-  match Cairos.Frame.of_series [ ("x", s) ] with
+  match Cairos.Frame.of_series (Cairos.Nonempty.singleton ("x", s)) with
   | Error e -> Alcotest.fail e
   | Ok frame ->
       let stats = Cairos.Frame.describe frame in
@@ -407,7 +426,7 @@ let describe_empty_frame () =
 let describe_quantile_interpolation () =
   let dates_4 = [| "2024-01-01"; "2024-01-02"; "2024-01-03"; "2024-01-04" |] in
   let s = Test_helpers.make_daily_series dates_4 [| 1.0; 2.0; 3.0; 4.0 |] in
-  match Cairos.Frame.of_series [ ("x", s) ] with
+  match Cairos.Frame.of_series (Cairos.Nonempty.singleton ("x", s)) with
   | Error e -> Alcotest.fail e
   | Ok frame ->
       let stats = Cairos.Frame.describe frame in
@@ -423,7 +442,6 @@ let tests =
   [
     ("of_series_single_column", `Quick, of_series_single_column);
     ("of_series_multiple_columns", `Quick, of_series_multiple_columns);
-    ("of_series_empty_list", `Quick, of_series_empty_list);
     ("of_series_length_mismatch", `Quick, of_series_length_mismatch);
     ("of_series_timestamp_mismatch", `Quick, of_series_timestamp_mismatch);
     ("of_series_duplicate_column_name", `Quick, of_series_duplicate_column_name);

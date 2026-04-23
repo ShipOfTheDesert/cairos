@@ -8,16 +8,15 @@
 type 'freq t
 
 val of_series :
-  (string * ('freq, (float, Bigarray.float64_elt) Nx.t) Series.t) list ->
+  (string * ('freq, (float, Bigarray.float64_elt) Nx.t) Series.t) Nonempty.t ->
   ('freq t, string) result
 (** [of_series pairs] constructs a frame from named series. All series must have
     structurally identical indices (same length, same timestamps in the same
     order). The index of the first series is the reference.
 
-    Returns [Error msg] when:
-    - the input list is empty
-    - any series has an index that differs from the first (different length or
-      different timestamps)
+    Non-emptiness is a structural precondition — the [Nonempty.t] parameter
+    makes a zero-column Frame unrepresentable at compile time. Remaining runtime
+    errors: duplicate column names, index mismatch across series.
 
     Column names are preserved in insertion order. *)
 
@@ -26,11 +25,14 @@ val get :
   'freq t ->
   ('freq, (float, Bigarray.float64_elt) Nx.t) Series.t option
 (** [get name frame] retrieves the series named [name]. Returns [None] if [name]
-    is not a column in [frame]. The returned series pairs the frame's shared
-    index with the stored values via {!Series.make_unsafe}. *)
+    is not a column in [frame]. A [Frame.t] always has at least one column; this
+    returning [None] means the name is absent, not that the frame is empty. The
+    returned series pairs the frame's shared index with the stored values via
+    {!Series.make_unsafe}. *)
 
 val columns : 'freq t -> string list
-(** Column names in insertion order. *)
+(** Column names in insertion order. Always non-empty — a [Frame.t] has at least
+    one column by construction. *)
 
 val head : int -> 'freq t -> 'freq t
 (** [head n frame] returns a frame with the first [n] rows. Clamps to the frame
