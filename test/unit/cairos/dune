@@ -63,4 +63,46 @@
  (name test_nonempty)
  (package cairos)
  (modules test_nonempty)
- (libraries cairos alcotest qcheck-core qcheck-alcotest))
+ (libraries cairos alcotest))
+
+(test
+ (name test_index_props)
+ (package cairos)
+ (modules test_index_props)
+ (libraries qcheck_gen cairos nx ptime alcotest qcheck-core qcheck-alcotest))
+
+(test
+ (name test_series_props)
+ (package cairos)
+ (modules test_series_props)
+ (libraries qcheck_gen cairos nx ptime alcotest qcheck-core qcheck-alcotest))
+
+(test
+ (name test_align_props)
+ (package cairos)
+ (modules test_align_props)
+ (libraries qcheck_gen cairos nx ptime alcotest qcheck-core qcheck-alcotest))
+
+(test
+ (name test_window_props)
+ (package cairos)
+ (modules test_window_props)
+ (libraries qcheck_gen cairos nx ptime alcotest qcheck-core qcheck-alcotest))
+
+(test
+ (name test_resample_props)
+ (package cairos)
+ (modules test_resample_props)
+ (libraries qcheck_gen cairos nx ptime alcotest qcheck-core qcheck-alcotest))
+
+(test
+ (name test_frame_props)
+ (package cairos)
+ (modules test_frame_props)
+ (libraries qcheck_gen cairos nx ptime alcotest qcheck-core qcheck-alcotest))
+
+(test
+ (name test_nonempty_props)
+ (package cairos)
+ (modules test_nonempty_props)
+ (libraries qcheck_gen cairos alcotest qcheck-core qcheck-alcotest))

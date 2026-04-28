@@ -222,6 +222,25 @@ let rejects_same_frequency () =
   | Ok _ -> Alcotest.fail "expected Error for same frequency"
   | Error _ -> ()
 
+(* Daily -> Minute is a multi-step upsample (rank gap of 2). The contract
+   under test is a single rank-guard branch at lib/resample.ml:98 that does
+   not depend on input shape, length, or values, so the rejection is
+   deterministic — a single fixed input is sufficient to pin it. Originally
+   landed as a [~count:200] QCheck property (TP-Resample-3) in
+   test_resample_props.ml; per RFC 0046 review C9, demoted to a
+   deterministic Alcotest case here so the [~count:200] declaration in
+   the property file does not promise random shape coverage that the
+   contract neither needs nor benefits from. *)
+let rejects_upsampling_daily_to_minute () =
+  let s =
+    Test_helpers.make_daily_series
+      [| "2024-01-01"; "2024-01-02"; "2024-01-03" |]
+      [| 1.0; 2.0; 3.0 |]
+  in
+  match Cairos.Resample.resample ~agg:`Last Cairos.Freq.Minute s with
+  | Ok _ -> Alcotest.fail "expected Error for daily -> minute upsample"
+  | Error _ -> ()
+
 (* --- Edge cases --- *)
 
 let empty_series () =
@@ -342,6 +361,9 @@ let tests =
     ("agg_max", `Quick, agg_max);
     ("rejects_upsampling", `Quick, rejects_upsampling);
     ("rejects_same_frequency", `Quick, rejects_same_frequency);
+    ( "rejects_upsampling_daily_to_minute",
+      `Quick,
+      rejects_upsampling_daily_to_minute );
     ("empty_series", `Quick, empty_series);
     ("single_element", `Quick, single_element);
     ("sparse_data_skips_empty_buckets", `Quick, sparse_data_skips_empty_buckets);
