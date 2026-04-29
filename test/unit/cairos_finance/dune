@@ -18,3 +18,16 @@
  (package cairos_finance)
  (modules test_metrics)
  (libraries finance_test_helpers cairos cairos_finance nx alcotest))
+
+(test
+ (name test_finance_props)
+ (package cairos_finance)
+ (modules test_finance_props)
+ (libraries
+  qcheck_gen
+  cairos
+  cairos_finance
+  nx
+  alcotest
+  qcheck-core
+  qcheck-alcotest))

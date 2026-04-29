@@ -33,13 +33,20 @@ test/unit/cairos_plot/     # SVG output, chart rendering
 
 ### Property tests (QCheck)
 
-Property tests live alongside Alcotest tests in the same `test_series.ml`-style
-files. Generators (e.g. `daily_float_series_arb`) are defined inline in the
-test file that consumes them — promote to a shared helper only when a second
-consumer lands. Register a property in the Alcotest suite with
-`QCheck_alcotest.to_alcotest my_property` in the `tests` list. Runtime deps
-are `qcheck-core` and `qcheck-alcotest`, declared `:with-test` on `cairos`
-only.
+Property tests live in dedicated `test_<module>_props.ml` files alongside
+the Alcotest suites under `test/unit/cairos/` and `test/unit/cairos_finance/`.
+Shared generators (e.g. `daily_float_series_arb`, `paired_overlapping_daily_arb`)
+live in `test/unit/support/qcheck_gen.{ml,mli}` and are consumed via the
+`qcheck_gen` library; per-test arbitraries that compose those generators
+(e.g. `series_with_shift_arb`) stay in the property file that uses them.
+Register a property in the Alcotest suite with `QCheck_alcotest.to_alcotest
+my_property` in the `tests` list. Runtime deps are `qcheck-core` and
+`qcheck-alcotest`, declared `:with-test` on `cairos` and `cairos_finance`.
+
+Property suites pin the QCheck seed via `Qcheck_gen.pin_seed_from_env ()`
+at the top of `let () = Alcotest.run ...` so CI is deterministic; the
+default seed is `0xC41A05`. To reproduce a given run locally, override
+the seed via the environment: `QCHECK_SEED=12345 just test`.
 
 ### Benchmarks (Bechamel)
 
