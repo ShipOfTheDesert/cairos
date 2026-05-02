@@ -16,14 +16,7 @@ let nan_fraction = 0.10
 let seed = 0xCA1_5EED
 
 let make_input () =
-  let epoch = 1_704_067_200.0 in
-  (* 2024-01-01 UTC *)
-  let ts = Array.init n (fun i -> epoch +. (float_of_int i *. 86_400.0)) in
-  let idx =
-    match Cairos.Index.of_unix_floats Cairos.Freq.Day ts with
-    | Ok i -> i
-    | Error e -> failwith ("bench input index: " ^ Cairos.Index.err_to_string e)
-  in
+  let idx = Bench_fixtures.make_index ~length:n () in
   let rng = Random.State.make [| seed |] in
   let values =
     Nx.create Nx.float64 [| n |]
@@ -31,9 +24,7 @@ let make_input () =
            if Random.State.float rng 1.0 < nan_fraction then Float.nan
            else Float.of_int (((i * 7) + 13) mod 1000) /. 100.0))
   in
-  match Cairos.Series.make idx values with
-  | Ok s -> s
-  | Error e -> failwith ("bench input series: " ^ e)
+  Bench_fixtures.make_series idx values
 
 (* Setup is hoisted out of [Staged.stage] so the hot loop only measures
    the operation under test. Every measured iteration reuses the same input. *)
@@ -63,11 +54,10 @@ let analyze raw_results =
   in
   Analyze.merge ols instances results
 
-let () =
+let render_notty results =
   List.iter
     (fun instance -> Bechamel_notty.Unit.add instance (Measure.unit instance))
     Instance.[ monotonic_clock; minor_allocated; major_allocated ];
-  let results = analyze (benchmark ()) in
   let window =
     match Notty_unix.winsize Unix.stdout with
     | Some (w, h) -> { Bechamel_notty.w; h }
@@ -78,3 +68,11 @@ let () =
       ~predictor:Measure.run results
   in
   Notty_unix.eol image |> Notty_unix.output_image
+
+let () =
+  let results = analyze (benchmark ()) in
+  match Bench_emit.output_mode () with
+  | `Notty -> render_notty results
+  | `Json ->
+      Bench_emit.to_channel stdout ~bench:"dropna" results
+        Instance.[ monotonic_clock; minor_allocated; major_allocated ]
