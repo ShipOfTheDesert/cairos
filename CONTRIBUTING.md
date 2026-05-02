@@ -61,21 +61,47 @@ minimalism. `bechamel` / `bechamel-notty` are declared `:with-test` on `cairos`
 at the `dune-project` level, so the switch has them whenever
 `opam install --deps-only --with-test .` runs.
 
-Run a benchmark with:
+Three opt-in justfile recipes drive the bench suite. None run as part of
+`just`, `dune runtest`, or any CI job:
+
+- `just bench` — runs every executable under `bench/` in Bechamel's Notty mode
+  and prints OLS tables to the terminal. Human-readable, no comparison, no
+  exit-code gate. The right recipe while iterating on a single bench.
+- `just bench-compare` — runs every executable in JSON mode, diffs against
+  `bench/baseline.json`, and exits non-zero on any monotonic-clock cell over
+  the 20% regression threshold or any baseline cell missing from the current
+  run. The regression gate.
+- `just bench-record` — runs every executable in JSON mode and rewrites
+  `bench/baseline.json` with the current numbers. Refresh after an
+  intentionally perf-affecting change. Follow `bench/README.md`'s recording
+  procedure (clean build, no other heavy load on the workstation).
+
+Each bench `.ml` selects between the two output shapes by reading the
+`CAIROS_BENCH_OUTPUT` environment variable: the `bench-compare` and
+`bench-record` recipes set `CAIROS_BENCH_OUTPUT=json` before invoking each
+executable; `bench` leaves it unset. The contract is exact-string match on
+`"json"` — any other value (or unset) falls back to Notty rendering. To
+manually invoke a single bench in JSON mode:
 
 ```bash
-opam exec -- dune exec bench/bench_series_map.exe
+CAIROS_BENCH_OUTPUT=json opam exec -- dune exec bench/bench_series_map.exe
 ```
 
-Benchmarks are **not** run by `just`, `dune runtest`, or any CI job. They are
-opt-in, slow (statistical sampling), and produce a Bechamel OLS table on
-stdout rather than pass/fail output. Regression thresholds and baseline storage
-are out of scope until a concrete need surfaces.
+See `bench/README.md` for the JSON schema (versioned at
+`cairos-bench-baseline-v1`) and the baseline-recording procedure.
+
+Benchmarks are slow (statistical sampling) and produce machine-readable
+JSON or human-readable Notty tables on stdout — never pass/fail output for
+a unit-test runner. The regression gate (`bench-compare`) is the exception:
+exit `0` means no regression, exit `1` means regression or missing cell,
+exit `2` means tooling-level failure.
 
 Error-handling policy for `bench/*.ml` mirrors the notebook exemption (see
 Coding Principles §IX): setup failures `failwith` with a context label rather
 than propagating `result`. The `result`-everywhere rule applies to the core
-library, not to executable harnesses.
+library, not to executable harnesses. The `bench/bench_emit.ml` helper
+library is library-shaped code, not a harness, and follows the
+`result`-everywhere rule in full.
 
 When writing a new benchmark, copy `bench/bench_series_map.ml` as the
 reference template. One load-bearing detail: **input construction

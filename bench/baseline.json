@@ -1,0 +1,431 @@
+{
+  "$schema": "cairos-bench-baseline-v1",
+  "benches": [
+    {
+      "$schema": "cairos-bench-baseline-v1",
+      "bench": "align",
+      "cells": [
+        {
+          "estimate": 252.357,
+          "instance": "major-allocated",
+          "name": "align/asof-backward/n=100",
+          "r_square": 0.99944
+        },
+        {
+          "estimate": 177247.0,
+          "instance": "minor-allocated",
+          "name": "align/asof-backward/n=100",
+          "r_square": 0.999781
+        },
+        {
+          "estimate": 206251.0,
+          "instance": "monotonic-clock",
+          "name": "align/asof-backward/n=100",
+          "r_square": 0.9994189999999999
+        },
+        {
+          "estimate": 3353.53,
+          "instance": "major-allocated",
+          "name": "align/asof-backward/n=1000",
+          "r_square": 0.999999
+        },
+        {
+          "estimate": 1783840.0,
+          "instance": "minor-allocated",
+          "name": "align/asof-backward/n=1000",
+          "r_square": 0.999953
+        },
+        {
+          "estimate": 4249640.0,
+          "instance": "monotonic-clock",
+          "name": "align/asof-backward/n=1000",
+          "r_square": 0.999645
+        },
+        {
+          "estimate": 103116.0,
+          "instance": "major-allocated",
+          "name": "align/asof-backward/n=10000",
+          "r_square": 1.0
+        },
+        {
+          "estimate": 17825700.0,
+          "instance": "minor-allocated",
+          "name": "align/asof-backward/n=10000",
+          "r_square": 1.0
+        },
+        {
+          "estimate": 432222000.0,
+          "instance": "monotonic-clock",
+          "name": "align/asof-backward/n=10000",
+          "r_square": 0.999976
+        },
+        {
+          "estimate": 9.510529999999999,
+          "instance": "major-allocated",
+          "name": "align/inner/n=100",
+          "r_square": 0.9729139999999999
+        },
+        {
+          "estimate": 4675.59,
+          "instance": "minor-allocated",
+          "name": "align/inner/n=100",
+          "r_square": 0.995412
+        },
+        {
+          "estimate": 6182.83,
+          "instance": "monotonic-clock",
+          "name": "align/inner/n=100",
+          "r_square": 0.99956
+        },
+        {
+          "estimate": 12990.2,
+          "instance": "major-allocated",
+          "name": "align/inner/n=1000",
+          "r_square": 0.999992
+        },
+        {
+          "estimate": 29318.0,
+          "instance": "minor-allocated",
+          "name": "align/inner/n=1000",
+          "r_square": 0.999997
+        },
+        {
+          "estimate": 85414.3,
+          "instance": "monotonic-clock",
+          "name": "align/inner/n=1000",
+          "r_square": 0.997003
+        },
+        {
+          "estimate": 129085.0,
+          "instance": "major-allocated",
+          "name": "align/inner/n=10000",
+          "r_square": 0.99993
+        },
+        {
+          "estimate": 280155.0,
+          "instance": "minor-allocated",
+          "name": "align/inner/n=10000",
+          "r_square": 0.999976
+        },
+        {
+          "estimate": 827815.0,
+          "instance": "monotonic-clock",
+          "name": "align/inner/n=10000",
+          "r_square": 0.996246
+        },
+        {
+          "estimate": 251.326,
+          "instance": "major-allocated",
+          "name": "align/left/n=100",
+          "r_square": 0.999551
+        },
+        {
+          "estimate": 179020.0,
+          "instance": "minor-allocated",
+          "name": "align/left/n=100",
+          "r_square": 0.999773
+        },
+        {
+          "estimate": 207915.0,
+          "instance": "monotonic-clock",
+          "name": "align/left/n=100",
+          "r_square": 0.9995039999999999
+        },
+        {
+          "estimate": 3351.58,
+          "instance": "major-allocated",
+          "name": "align/left/n=1000",
+          "r_square": 0.999999
+        },
+        {
+          "estimate": 1786340.0,
+          "instance": "minor-allocated",
+          "name": "align/left/n=1000",
+          "r_square": 0.99996
+        },
+        {
+          "estimate": 4239570.0,
+          "instance": "monotonic-clock",
+          "name": "align/left/n=1000",
+          "r_square": 0.99851
+        },
+        {
+          "estimate": 103122.0,
+          "instance": "major-allocated",
+          "name": "align/left/n=10000",
+          "r_square": 1.0
+        },
+        {
+          "estimate": 17825700.0,
+          "instance": "minor-allocated",
+          "name": "align/left/n=10000",
+          "r_square": 1.0
+        },
+        {
+          "estimate": 432669000.0,
+          "instance": "monotonic-clock",
+          "name": "align/left/n=10000",
+          "r_square": 0.99999
+        }
+      ]
+    },
+    {
+      "$schema": "cairos-bench-baseline-v1",
+      "bench": "cumprod",
+      "cells": [
+        {
+          "estimate": 19866.1,
+          "instance": "major-allocated",
+          "name": "cumprod vs expanding/cumprod / 10k daily float64",
+          "r_square": 0.99971
+        },
+        {
+          "estimate": 138496.0,
+          "instance": "minor-allocated",
+          "name": "cumprod vs expanding/cumprod / 10k daily float64",
+          "r_square": 0.999583
+        },
+        {
+          "estimate": 246726.0,
+          "instance": "monotonic-clock",
+          "name": "cumprod vs expanding/cumprod / 10k daily float64",
+          "r_square": 0.989742
+        },
+        {
+          "estimate": 49997200.0,
+          "instance": "major-allocated",
+          "name": "cumprod vs expanding/expanding product / 10k daily float64",
+          "r_square": 1.0
+        },
+        {
+          "estimate": 402822000.0,
+          "instance": "minor-allocated",
+          "name": "cumprod vs expanding/expanding product / 10k daily float64",
+          "r_square": 1.0
+        },
+        {
+          "estimate": 591181000.0,
+          "instance": "monotonic-clock",
+          "name": "cumprod vs expanding/expanding product / 10k daily float64",
+          "r_square": 0.997364
+        }
+      ]
+    },
+    {
+      "$schema": "cairos-bench-baseline-v1",
+      "bench": "dropna",
+      "cells": [
+        {
+          "estimate": 63259.1,
+          "instance": "major-allocated",
+          "name": "dropna / 10k daily float64, 10% NaN",
+          "r_square": 0.998856
+        },
+        {
+          "estimate": 83162.2,
+          "instance": "minor-allocated",
+          "name": "dropna / 10k daily float64, 10% NaN",
+          "r_square": 0.998207
+        },
+        {
+          "estimate": 403432.0,
+          "instance": "monotonic-clock",
+          "name": "dropna / 10k daily float64, 10% NaN",
+          "r_square": 0.981293
+        }
+      ]
+    },
+    {
+      "$schema": "cairos-bench-baseline-v1",
+      "bench": "resample",
+      "cells": [
+        {
+          "estimate": 8767.559999999999,
+          "instance": "major-allocated",
+          "name": "resample/daily-to-weekly/2500",
+          "r_square": 0.999916
+        },
+        {
+          "estimate": 452038.0,
+          "instance": "minor-allocated",
+          "name": "resample/daily-to-weekly/2500",
+          "r_square": 0.999943
+        },
+        {
+          "estimate": 361357.0,
+          "instance": "monotonic-clock",
+          "name": "resample/daily-to-weekly/2500",
+          "r_square": 0.9840410000000001
+        }
+      ]
+    },
+    {
+      "$schema": "cairos-bench-baseline-v1",
+      "bench": "scan_family",
+      "cells": [
+        {
+          "estimate": 200026.0,
+          "instance": "major-allocated",
+          "name": "scan/cumprod/100k",
+          "r_square": 1.0
+        },
+        {
+          "estimate": 1394920.0,
+          "instance": "minor-allocated",
+          "name": "scan/cumprod/100k",
+          "r_square": 0.999973
+        },
+        {
+          "estimate": 2161080.0,
+          "instance": "monotonic-clock",
+          "name": "scan/cumprod/100k",
+          "r_square": 0.999225
+        },
+        {
+          "estimate": 200026.0,
+          "instance": "major-allocated",
+          "name": "scan/cumsum/100k",
+          "r_square": 1.0
+        },
+        {
+          "estimate": 1394570.0,
+          "instance": "minor-allocated",
+          "name": "scan/cumsum/100k",
+          "r_square": 0.999966
+        },
+        {
+          "estimate": 2533240.0,
+          "instance": "monotonic-clock",
+          "name": "scan/cumsum/100k",
+          "r_square": 0.996171
+        },
+        {
+          "estimate": 200026.0,
+          "instance": "major-allocated",
+          "name": "scan/scan-add/100k",
+          "r_square": 1.0
+        },
+        {
+          "estimate": 1394920.0,
+          "instance": "minor-allocated",
+          "name": "scan/scan-add/100k",
+          "r_square": 0.999973
+        },
+        {
+          "estimate": 2166100.0,
+          "instance": "monotonic-clock",
+          "name": "scan/scan-add/100k",
+          "r_square": 0.998314
+        }
+      ]
+    },
+    {
+      "$schema": "cairos-bench-baseline-v1",
+      "bench": "series_map",
+      "cells": [
+        {
+          "estimate": 50.7599,
+          "instance": "major-allocated",
+          "name": "cairos/Series.map (*2 + 1) / 100k daily float64",
+          "r_square": 0.898402
+        },
+        {
+          "estimate": 2125.19,
+          "instance": "minor-allocated",
+          "name": "cairos/Series.map (*2 + 1) / 100k daily float64",
+          "r_square": 0.716701
+        },
+        {
+          "estimate": 1327110.0,
+          "instance": "monotonic-clock",
+          "name": "cairos/Series.map (*2 + 1) / 100k daily float64",
+          "r_square": 0.915152
+        }
+      ]
+    },
+    {
+      "$schema": "cairos-bench-baseline-v1",
+      "bench": "window_expanding",
+      "cells": [
+        {
+          "estimate": 10605.6,
+          "instance": "major-allocated",
+          "name": "expanding/max/10k",
+          "r_square": 0.999991
+        },
+        {
+          "estimate": 6640000.0,
+          "instance": "minor-allocated",
+          "name": "expanding/max/10k",
+          "r_square": 0.999974
+        },
+        {
+          "estimate": 46805300.0,
+          "instance": "monotonic-clock",
+          "name": "expanding/max/10k",
+          "r_square": 0.996136
+        }
+      ]
+    },
+    {
+      "$schema": "cairos-bench-baseline-v1",
+      "bench": "window_rolling",
+      "cells": [
+        {
+          "estimate": 11171.4,
+          "instance": "major-allocated",
+          "name": "rolling/n=10",
+          "r_square": 0.999997
+        },
+        {
+          "estimate": 10249000.0,
+          "instance": "minor-allocated",
+          "name": "rolling/n=10",
+          "r_square": 0.999996
+        },
+        {
+          "estimate": 12767800.0,
+          "instance": "monotonic-clock",
+          "name": "rolling/n=10",
+          "r_square": 0.973297
+        },
+        {
+          "estimate": 11162.2,
+          "instance": "major-allocated",
+          "name": "rolling/n=200",
+          "r_square": 0.9999980000000001
+        },
+        {
+          "estimate": 10056700.0,
+          "instance": "minor-allocated",
+          "name": "rolling/n=200",
+          "r_square": 0.999997
+        },
+        {
+          "estimate": 13111600.0,
+          "instance": "monotonic-clock",
+          "name": "rolling/n=200",
+          "r_square": 0.999754
+        },
+        {
+          "estimate": 11166.4,
+          "instance": "major-allocated",
+          "name": "rolling/n=50",
+          "r_square": 0.999999
+        },
+        {
+          "estimate": 10202300.0,
+          "instance": "minor-allocated",
+          "name": "rolling/n=50",
+          "r_square": 0.999994
+        },
+        {
+          "estimate": 12790400.0,
+          "instance": "monotonic-clock",
+          "name": "rolling/n=50",
+          "r_square": 0.9992799999999999
+        }
+      ]
+    }
+  ]
+}

@@ -14,18 +14,9 @@ open Toolkit
 let n = 100_000
 
 let make_input () =
-  let epoch = 1_704_067_200.0 in
-  (* 2024-01-01 UTC *)
-  let ts = Array.init n (fun i -> epoch +. (float_of_int i *. 86_400.0)) in
-  let idx =
-    match Cairos.Index.of_unix_floats Cairos.Freq.Day ts with
-    | Ok i -> i
-    | Error e -> failwith ("bench input index: " ^ Cairos.Index.err_to_string e)
-  in
+  let idx = Bench_fixtures.make_index ~length:n () in
   let values = Nx.create Nx.float64 [| n |] (Array.init n float_of_int) in
-  match Cairos.Series.make idx values with
-  | Ok s -> s
-  | Error e -> failwith ("bench input series: " ^ e)
+  Bench_fixtures.make_series idx values
 
 (* Setup is hoisted out of [Staged.stage] so the hot loop only measures
    [Series.map]. Every measured iteration reuses the same input. *)
@@ -56,11 +47,10 @@ let analyze raw_results =
   in
   Analyze.merge ols instances results
 
-let () =
+let render_notty results =
   List.iter
     (fun instance -> Bechamel_notty.Unit.add instance (Measure.unit instance))
     Instance.[ monotonic_clock; minor_allocated; major_allocated ];
-  let results = analyze (benchmark ()) in
   let window =
     match Notty_unix.winsize Unix.stdout with
     | Some (w, h) -> { Bechamel_notty.w; h }
@@ -71,3 +61,11 @@ let () =
       ~predictor:Measure.run results
   in
   Notty_unix.eol image |> Notty_unix.output_image
+
+let () =
+  let results = analyze (benchmark ()) in
+  match Bench_emit.output_mode () with
+  | `Notty -> render_notty results
+  | `Json ->
+      Bench_emit.to_channel stdout ~bench:"series_map" results
+        Instance.[ monotonic_clock; minor_allocated; major_allocated ]

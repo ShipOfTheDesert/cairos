@@ -22,9 +22,64 @@ test:
 
 # Opt-in benchmark runner. Intentionally NOT part of the default gate or
 # `dune runtest` (per RFC 0032): benchmarks are manual, time-sensitive, and
-# their output is noise for CI. Run explicitly with `just bench`.
+# their output is noise for CI. Three recipes share the same per-bench loop:
+# `bench` renders Notty for human inspection; `bench-record` writes
+# bench/baseline.json under FR-7 conditions; `bench-compare` diffs the
+# current run against the committed baseline and exits non-zero on
+# >20% wall-clock regression or any missing-in-current cell.
 bench:
-    opam exec -- dune exec bench/bench_series_map.exe
+    #!/usr/bin/env bash
+    set -euo pipefail
+    shopt -s nullglob
+    for ml in bench/bench_*.ml; do
+        name=$(basename "$ml" .ml)
+        case "$name" in bench_compare|bench_record|bench_emit) continue;; esac
+        opam exec -- dune exec "bench/$name.exe"
+    done
+
+# Refresh bench/baseline.json. Run under FR-7 conditions: clean build, no
+# competing load. Each bench writes its JSON output to its own tempfile in
+# a tempdir; bench_record.exe reads the tempdir and rewrites
+# bench/baseline.json via Bench_emit.write_consolidated for diff stability.
+# The OCaml driver assembles the consolidated wrapper — no shell-side JSON
+# string-concat — per ~/.claude/solutions/ocaml/yojson-over-manual-json.md.
+bench-record:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    shopt -s nullglob
+    tmpdir=$(mktemp -d)
+    trap 'rm -rf "$tmpdir"' EXIT
+    for ml in bench/bench_*.ml; do
+        name=$(basename "$ml" .ml)
+        case "$name" in bench_compare|bench_record|bench_emit) continue;; esac
+        if ! CAIROS_BENCH_OUTPUT=json opam exec -- dune exec "bench/$name.exe" \
+                > "$tmpdir/$name.json"; then
+            echo "bench-record: $name failed" >&2
+            exit 1
+        fi
+    done
+    opam exec -- dune exec bench/bench_record.exe -- --bench-dir "$tmpdir"
+
+# Run every bench in JSON mode, diff against bench/baseline.json. Exits 0
+# on no regressions, 1 on >20% wall-clock regression or missing-in-current,
+# 2 on tooling-level failure (malformed JSON, missing baseline).
+bench-compare:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    shopt -s nullglob
+    tmpdir=$(mktemp -d)
+    trap 'rm -rf "$tmpdir"' EXIT
+    for ml in bench/bench_*.ml; do
+        name=$(basename "$ml" .ml)
+        case "$name" in bench_compare|bench_record|bench_emit) continue;; esac
+        if ! CAIROS_BENCH_OUTPUT=json opam exec -- dune exec "bench/$name.exe" \
+                > "$tmpdir/$name.json"; then
+            echo "bench-compare: $name failed" >&2
+            exit 1
+        fi
+    done
+    opam exec -- dune exec bench/bench_compare.exe -- \
+        --baseline bench/baseline.json --bench-dir "$tmpdir"
 
 fmt:
     opam exec -- dune fmt

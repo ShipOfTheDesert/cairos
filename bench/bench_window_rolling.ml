@@ -1,7 +1,7 @@
-(* Run with: opam exec -- dune exec bench/bench_cumprod.exe
+(* Run with: opam exec -- dune exec bench/bench_window_rolling.exe
 
-   Benchmark: Cairos.Series.cumprod (O(n) scan) vs Window.expanding product
-   (O(n^2)) on a 10k-element daily float64 series.
+   Benchmark: Cairos.Window.rolling at n in {10, 50, 200} on a 10k-element
+   daily float64 series, reducer Nx.mean.
 
    Prerequisite: this file is only built when cairos's :with-test deps are
    installed (bechamel + bechamel-notty). Run
@@ -15,30 +15,21 @@ let n = 10_000
 
 let make_input () =
   let idx = Bench_fixtures.make_index ~length:n () in
-  (* Synthetic (1 + returns) series: random positive values in [0.99, 1.01] *)
-  let values =
-    Nx.create Nx.float64 [| n |]
-      (Array.init n (fun i ->
-           let x = Float.of_int (((i * 7) + 13) mod 1000) /. 50_000.0 in
-           1.0 -. 0.01 +. x))
-  in
+  let values = Bench_fixtures.make_values ~length:n in
   Bench_fixtures.make_series idx values
 
 (* Setup is hoisted out of [Staged.stage] so the hot loop only measures
-   the operation under test. Every measured iteration reuses the same input. *)
-let test_cumprod =
+   [Window.rolling]. The same 10k-point input is reused across all window
+   sizes; only [n] varies via [make_indexed]. *)
+let test_rolling =
   let s = make_input () in
-  Test.make ~name:"cumprod / 10k daily float64"
-    (Staged.stage (fun () -> ignore (Cairos.Series.cumprod s)))
-
-let test_expanding_product =
-  let s = make_input () in
-  Test.make ~name:"expanding product / 10k daily float64"
-    (Staged.stage (fun () ->
-         ignore
-           (Cairos.Window.expanding
-              (fun w -> Array.fold_left ( *. ) 1.0 (Nx.to_array w))
-              s)))
+  Test.make_indexed ~name:"rolling/n" ~fmt:"%s=%d" ~args:[ 10; 50; 200 ]
+    (fun window ->
+      Staged.stage (fun () ->
+          ignore
+            (Cairos.Window.rolling ~n:window
+               (fun w -> Nx.item [] (Nx.mean w))
+               s)))
 
 let benchmark () =
   let instances =
@@ -47,9 +38,7 @@ let benchmark () =
   let cfg =
     Benchmark.cfg ~limit:3000 ~quota:(Time.second 2.0) ~stabilize:true ()
   in
-  Benchmark.all cfg instances
-    (Test.make_grouped ~name:"cumprod vs expanding"
-       [ test_cumprod; test_expanding_product ])
+  Benchmark.all cfg instances test_rolling
 
 let analyze raw_results =
   let instances =
@@ -83,5 +72,5 @@ let () =
   match Bench_emit.output_mode () with
   | `Notty -> render_notty results
   | `Json ->
-      Bench_emit.to_channel stdout ~bench:"cumprod" results
+      Bench_emit.to_channel stdout ~bench:"window_rolling" results
         Instance.[ monotonic_clock; minor_allocated; major_allocated ]

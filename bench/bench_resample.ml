@@ -1,7 +1,11 @@
-(* Run with: opam exec -- dune exec bench/bench_cumprod.exe
+(* Run with: opam exec -- dune exec bench/bench_resample.exe
 
-   Benchmark: Cairos.Series.cumprod (O(n) scan) vs Window.expanding product
-   (O(n^2)) on a 10k-element daily float64 series.
+   Benchmark: Cairos.Resample.resample daily->weekly with [~agg:`Last] on a
+   ~2_500-bar (10-year) daily float64 series (PRD FR-1 line 4, partial).
+
+   Daily->monthly cell deferred — Cairos.Freq.t does not include Month. To be
+   added in the feature that extends Freq.t. See RFC 0048 §Resolved Open
+   Questions Q1.
 
    Prerequisite: this file is only built when cairos's :with-test deps are
    installed (bechamel + bechamel-notty). Run
@@ -11,34 +15,22 @@
 open Bechamel
 open Toolkit
 
-let n = 10_000
+let n = 2_500
 
 let make_input () =
   let idx = Bench_fixtures.make_index ~length:n () in
-  (* Synthetic (1 + returns) series: random positive values in [0.99, 1.01] *)
-  let values =
-    Nx.create Nx.float64 [| n |]
-      (Array.init n (fun i ->
-           let x = Float.of_int (((i * 7) + 13) mod 1000) /. 50_000.0 in
-           1.0 -. 0.01 +. x))
-  in
+  let values = Bench_fixtures.make_values ~length:n in
   Bench_fixtures.make_series idx values
 
 (* Setup is hoisted out of [Staged.stage] so the hot loop only measures
-   the operation under test. Every measured iteration reuses the same input. *)
-let test_cumprod =
+   [Resample.resample]. The same ~2_500-bar input is reused across iterations. *)
+let test_resample =
   let s = make_input () in
-  Test.make ~name:"cumprod / 10k daily float64"
-    (Staged.stage (fun () -> ignore (Cairos.Series.cumprod s)))
-
-let test_expanding_product =
-  let s = make_input () in
-  Test.make ~name:"expanding product / 10k daily float64"
+  Test.make ~name:"resample/daily-to-weekly/2500"
     (Staged.stage (fun () ->
-         ignore
-           (Cairos.Window.expanding
-              (fun w -> Array.fold_left ( *. ) 1.0 (Nx.to_array w))
-              s)))
+         match Cairos.Resample.resample ~agg:`Last Cairos.Freq.Week s with
+         | Ok _ -> ()
+         | Error _ -> failwith "bench input violates resample contract"))
 
 let benchmark () =
   let instances =
@@ -47,9 +39,7 @@ let benchmark () =
   let cfg =
     Benchmark.cfg ~limit:3000 ~quota:(Time.second 2.0) ~stabilize:true ()
   in
-  Benchmark.all cfg instances
-    (Test.make_grouped ~name:"cumprod vs expanding"
-       [ test_cumprod; test_expanding_product ])
+  Benchmark.all cfg instances test_resample
 
 let analyze raw_results =
   let instances =
@@ -83,5 +73,5 @@ let () =
   match Bench_emit.output_mode () with
   | `Notty -> render_notty results
   | `Json ->
-      Bench_emit.to_channel stdout ~bench:"cumprod" results
+      Bench_emit.to_channel stdout ~bench:"resample" results
         Instance.[ monotonic_clock; minor_allocated; major_allocated ]

@@ -32,7 +32,8 @@
   (qcheck-core :with-test)
   (qcheck-alcotest :with-test)
   (bechamel :with-test)
-  (bechamel-notty :with-test)))
+  (bechamel-notty :with-test)
+  (yojson :with-test)))
 
 (package
  (name cairos_finance)

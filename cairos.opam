@@ -20,6 +20,7 @@ depends: [
   "qcheck-alcotest" {with-test}
   "bechamel" {with-test}
   "bechamel-notty" {with-test}
+  "yojson" {with-test}
   "odoc" {with-doc}
 ]
 build: [

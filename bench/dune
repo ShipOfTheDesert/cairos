@@ -1,14 +1,111 @@
+(library
+ (name cairos_bench_emit)
+ (wrapped false)
+ (modules bench_emit bench_fixtures)
+ (libraries bechamel cairos nx yojson))
+
 (executable
  (name bench_series_map)
  (modules bench_series_map)
- (libraries cairos nx bechamel bechamel-notty notty.unix unix))
+ (libraries
+  cairos
+  nx
+  bechamel
+  bechamel-notty
+  notty.unix
+  unix
+  cairos_bench_emit))
 
 (executable
  (name bench_cumprod)
  (modules bench_cumprod)
- (libraries cairos nx bechamel bechamel-notty notty.unix unix))
+ (libraries
+  cairos
+  nx
+  bechamel
+  bechamel-notty
+  notty.unix
+  unix
+  cairos_bench_emit))
 
 (executable
  (name bench_dropna)
  (modules bench_dropna)
- (libraries cairos nx bechamel bechamel-notty notty.unix unix))
+ (libraries
+  cairos
+  nx
+  bechamel
+  bechamel-notty
+  notty.unix
+  unix
+  cairos_bench_emit))
+
+(executable
+ (name bench_window_rolling)
+ (modules bench_window_rolling)
+ (libraries
+  cairos
+  nx
+  bechamel
+  bechamel-notty
+  notty.unix
+  unix
+  cairos_bench_emit))
+
+(executable
+ (name bench_window_expanding)
+ (modules bench_window_expanding)
+ (libraries
+  cairos
+  nx
+  bechamel
+  bechamel-notty
+  notty.unix
+  unix
+  cairos_bench_emit))
+
+(executable
+ (name bench_align)
+ (modules bench_align)
+ (libraries
+  cairos
+  nx
+  bechamel
+  bechamel-notty
+  notty.unix
+  unix
+  cairos_bench_emit))
+
+(executable
+ (name bench_resample)
+ (modules bench_resample)
+ (libraries
+  cairos
+  nx
+  bechamel
+  bechamel-notty
+  notty.unix
+  unix
+  cairos_bench_emit))
+
+(executable
+ (name bench_scan_family)
+ (modules bench_scan_family)
+ (libraries
+  cairos
+  nx
+  bechamel
+  bechamel-notty
+  notty.unix
+  unix
+  cairos_bench_emit))
+
+(executable
+ (name bench_compare)
+ (modules bench_compare)
+ (libraries cairos_bench_emit))
+
+(executable
+ (name bench_record)
+ (modules bench_record)
+ (libraries cairos_bench_emit))

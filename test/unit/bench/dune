@@ -1,0 +1,6 @@
+(test
+ (name test_bench_emit)
+ (package cairos)
+ (modules test_bench_emit)
+ (libraries cairos_bench_emit alcotest bechamel yojson unix str)
+ (deps ../../../bench/bench_compare.exe ../../../bench/bench_record.exe))
