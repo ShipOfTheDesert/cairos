@@ -31,3 +31,13 @@ val make_series :
   ('freq, (float, Nx.float64_elt) Nx.t) Cairos.Series.t
 (** [make_series idx vals] constructs a series, raising [Failure] on
     [Cairos.Series.make] error. *)
+
+val make_frame : bars:int -> columns:int -> [ `Daily ] Cairos.Frame.t
+(** [make_frame ~bars ~columns] builds a deterministic [`Daily]-tagged frame
+    with [bars] rows and [columns] named columns ([c0], [c1], …,
+    [c{columns-1}]). All cells are finite floats — no NaN, since the bench
+    measures the happy path of the cross-sectional kernels.
+
+    Raises [Failure] if [columns < 1] or if [Cairos.Frame.of_series] rejects the
+    construction (would only happen on an internal mismatch — bench-level
+    convention per CONTRIBUTING.md §VII). *)

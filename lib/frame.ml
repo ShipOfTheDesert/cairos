@@ -145,3 +145,132 @@ let describe frame =
       in
       (name, stats))
     frame.columns
+
+(* Cross-sectional operations.
+
+   Each operation traverses the input frame row-by-row. For each row index,
+   per-column values are gathered into a single [float array scratch] of
+   length [n_cols], allocated once outside the row loop and reused per row.
+   The shared scratch buffer is private to the function call (no aliasing of
+   input cells) per RFC 0050 §B.
+
+   Output frames are built via the concrete record literal
+   [{ index = frame.index; columns = new_columns }] from inside this module
+   — never via [of_series], which returns [result]. The invariants
+   [of_series] validates (non-empty, index identity, distinct column names)
+   hold by construction at every output: the index is reused verbatim, the
+   column-name list mirrors [frame.columns]'s names in order, and the
+   non-emptiness inherits from the input frame. *)
+
+(* Writes the cross-section at row [i] into the caller-allocated [scratch]
+   buffer. [Array.length scratch] must equal [List.length frame.columns];
+   no allocation per call. Internal to [frame.ml]; not exposed in [.mli]. *)
+let gather_row frame i scratch =
+  List.iteri
+    (fun j (_, values) -> scratch.(j) <- Nx.item [ i ] values)
+    frame.columns
+
+let column_map ~f frame =
+  (* Imperative row loop per RFC 0050 §B — see header above. *)
+  let n_cols = List.length frame.columns in
+  let n_rows = Index.length frame.index in
+  let scratch = Array.make n_cols 0.0 in
+  let out = Array.make n_rows 0.0 in
+  for i = 0 to n_rows - 1 do
+    gather_row frame i scratch;
+    out.(i) <- f scratch
+  done;
+  let values = Nx.create Nx.float64 [| n_rows |] out in
+  Series.make_unsafe frame.index values
+
+let rank frame =
+  (* Imperative row loop per RFC 0050 §B / §R4 — see header above. *)
+  let n_cols = List.length frame.columns in
+  let n_rows = Index.length frame.index in
+  let scratch = Array.make n_cols 0.0 in
+  let tie_buf = Array.make n_cols (0, 0.0) in
+  let new_columns =
+    List.map
+      (fun (name, _) ->
+        (name, Nx.create Nx.float64 [| n_rows |] (Array.make n_rows Float.nan)))
+      frame.columns
+  in
+  let out_tensors = Array.of_list (List.map snd new_columns) in
+  for i = 0 to n_rows - 1 do
+    gather_row frame i scratch;
+    let non_nan_count = ref 0 in
+    for j = 0 to n_cols - 1 do
+      let v = scratch.(j) in
+      if not (Float.is_nan v) then begin
+        tie_buf.(!non_nan_count) <- (j, v);
+        incr non_nan_count
+      end
+    done;
+    let n = !non_nan_count in
+    (* Stable sort the non-NaN prefix ascending by value. Stability isn't
+       required for correctness — equal-valued cells collapse into a
+       single run that all receive the same average rank — but matches
+       RFC Step 4c verbatim. *)
+    let prefix = Array.sub tie_buf 0 n in
+    Array.stable_sort (fun (_, a) (_, b) -> Float.compare a b) prefix;
+    let p = ref 0 in
+    while !p < n do
+      let _, v_run = prefix.(!p) in
+      let q = ref !p in
+      while !q < n && Float.equal (snd prefix.(!q)) v_run do
+        incr q
+      done;
+      let k = !q - !p in
+      let rank_value =
+        ((Float.of_int !p +. Float.of_int (!p + k - 1)) /. 2.0) +. 1.0
+      in
+      for r = !p to !q - 1 do
+        let orig_col, _ = prefix.(r) in
+        Nx.set_item [ i ] rank_value out_tensors.(orig_col)
+      done;
+      p := !q
+    done
+  done;
+  { index = frame.index; columns = new_columns }
+
+let zscore frame =
+  (* Two-pass kernel per RFC 0050 §C; imperative per §B. *)
+  let n_cols = List.length frame.columns in
+  let n_rows = Index.length frame.index in
+  let scratch = Array.make n_cols 0.0 in
+  let new_columns =
+    List.map
+      (fun (name, _) ->
+        (name, Nx.create Nx.float64 [| n_rows |] (Array.make n_rows Float.nan)))
+      frame.columns
+  in
+  let out_tensors = Array.of_list (List.map snd new_columns) in
+  for i = 0 to n_rows - 1 do
+    gather_row frame i scratch;
+    let n = ref 0 in
+    let sum = ref 0.0 in
+    for j = 0 to n_cols - 1 do
+      let v = scratch.(j) in
+      if not (Float.is_nan v) then begin
+        incr n;
+        sum := !sum +. v
+      end
+    done;
+    if !n >= 2 then begin
+      let mean = !sum /. Float.of_int !n in
+      let ss = ref 0.0 in
+      for j = 0 to n_cols - 1 do
+        let v = scratch.(j) in
+        if not (Float.is_nan v) then ss := !ss +. ((v -. mean) *. (v -. mean))
+      done;
+      (* ddof=1 per PRD Decision 2; matches Cairos_finance.annualised_vol. *)
+      let std = Float.sqrt (!ss /. Float.of_int (!n - 1)) in
+      if not (Float.equal std 0.0) then
+        for j = 0 to n_cols - 1 do
+          let v = scratch.(j) in
+          if not (Float.is_nan v) then
+            Nx.set_item [ i ] ((v -. mean) /. std) out_tensors.(j)
+        done
+    end
+  done;
+  { index = frame.index; columns = new_columns }

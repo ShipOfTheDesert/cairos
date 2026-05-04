@@ -33,7 +33,7 @@ bench:
     shopt -s nullglob
     for ml in bench/bench_*.ml; do
         name=$(basename "$ml" .ml)
-        case "$name" in bench_compare|bench_record|bench_emit) continue;; esac
+        case "$name" in bench_compare|bench_record|bench_emit|bench_fixtures) continue;; esac
         opam exec -- dune exec "bench/$name.exe"
     done
 
@@ -51,7 +51,7 @@ bench-record:
     trap 'rm -rf "$tmpdir"' EXIT
     for ml in bench/bench_*.ml; do
         name=$(basename "$ml" .ml)
-        case "$name" in bench_compare|bench_record|bench_emit) continue;; esac
+        case "$name" in bench_compare|bench_record|bench_emit|bench_fixtures) continue;; esac
         if ! CAIROS_BENCH_OUTPUT=json opam exec -- dune exec "bench/$name.exe" \
                 > "$tmpdir/$name.json"; then
             echo "bench-record: $name failed" >&2
@@ -71,7 +71,7 @@ bench-compare:
     trap 'rm -rf "$tmpdir"' EXIT
     for ml in bench/bench_*.ml; do
         name=$(basename "$ml" .ml)
-        case "$name" in bench_compare|bench_record|bench_emit) continue;; esac
+        case "$name" in bench_compare|bench_record|bench_emit|bench_fixtures) continue;; esac
         if ! CAIROS_BENCH_OUTPUT=json opam exec -- dune exec "bench/$name.exe" \
                 > "$tmpdir/$name.json"; then
             echo "bench-compare: $name failed" >&2
@@ -100,6 +100,7 @@ validate-generate:
 
 validate-check:
     opam exec -- dune exec test/unit/cairos_finance/cross_validate.exe
+    opam exec -- dune exec test/unit/cairos/cross_validate_frame.exe
 
 validate:
     #!/usr/bin/env bash

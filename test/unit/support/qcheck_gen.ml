@@ -269,6 +269,154 @@ let paired_overlapping_daily_arb =
         (Cairos.Series.length a) (Cairos.Series.length b) (recover_start_day b))
     gen
 
+(* Frame arbitraries
+
+   Each generator below builds a [[`Daily]] frame from row-major float arrays.
+   Columns are named [c0 .. c{n_cols-1}]; column j carries the values
+   [rows.(0).(j); rows.(1).(j); ...]. The internal [Frame.of_series] cannot
+   fail by construction: column names are programmatically distinct and every
+   column shares the same epoch-anchored daily index built by
+   [make_series_from_floats]. The unreachable [Error] branch terminates with
+   [failwith] per ~/.claude/solutions/ocaml/qcheck-generator-failwith.md (RFC
+   0030 §R4 — same carve-out as the series factories above). *)
+
+let frame_from_rows ~n_cols rows =
+  let columns =
+    List.init n_cols (fun j ->
+        let col_values =
+          Array.init (Array.length rows) (fun i -> rows.(i).(j))
+        in
+        let s = make_series_from_floats ~freq:Cairos.Freq.Day col_values in
+        (Printf.sprintf "c%d" j, s))
+  in
+  match columns with
+  | [] ->
+      (* Unreachable: n_cols is sampled from int_range with lower bound ≥ 1. *)
+      failwith "qcheck_gen.frame_from_rows: unreachable — n_cols was 0"
+  | hd :: tl -> (
+      let ne = Cairos.Nonempty.make hd tl in
+      match Cairos.Frame.of_series ne with
+      | Ok f -> f
+      | Error e ->
+          (* Unreachable: column names are programmatically distinct and every
+             column shares the same epoch-anchored daily index. *)
+          failwith ("qcheck_gen.frame_from_rows: of_series: " ^ e))
+
+let frame_print_shape f =
+  let cols = Cairos.Frame.columns f in
+  let n_cols = List.length cols in
+  let n_rows =
+    match cols with
+    | [] -> 0
+    | name :: _ -> (
+        match Cairos.Frame.get name f with
+        | None -> 0
+        | Some s -> Cairos.Series.length s)
+  in
+  (n_rows, n_cols)
+
+(* Generate one row of [n_cols] strictly-distinct finite floats. Sorts the
+   raw [float_range] draws and bumps any colliding cell by [Float.succ]
+   before shuffling, so the post-shuffle multiset is guaranteed
+   strict-distinct. *)
+let row_distinct_floats_gen ~n_cols =
+  let open QCheck.Gen in
+  let* sorted =
+    array_size (return n_cols) (float_range (-1e6) 1e6) >|= fun arr ->
+    let arr = Array.copy arr in
+    Array.sort Float.compare arr;
+    for i = 1 to Array.length arr - 1 do
+      if Float.equal arr.(i) arr.(i - 1) then arr.(i) <- Float.succ arr.(i - 1)
+    done;
+    arr
+  in
+  shuffle_array sorted
+
+let daily_frame_distinct_floats_arb =
+  let open QCheck in
+  let gen =
+    let open Gen in
+    let* n_rows = int_range 1 20 in
+    let* n_cols = int_range 1 10 in
+    let* rows = array_size (return n_rows) (row_distinct_floats_gen ~n_cols) in
+    return (frame_from_rows ~n_cols rows)
+  in
+  make
+    ~print:(fun f ->
+      let n_rows, n_cols = frame_print_shape f in
+      Printf.sprintf "<daily frame distinct rows=%d cols=%d>" n_rows n_cols)
+    gen
+
+(* One cell: ~5% NaN density, otherwise finite value in [-10, 10]. The narrow
+   bucket lets ties arise naturally across cells in the same row. *)
+let cell_with_nan_gen =
+  let open QCheck.Gen in
+  let* roll = int_range 0 19 in
+  if roll = 0 then return Float.nan else float_range (-10.0) 10.0
+
+let daily_frame_finite_floats_with_nan_arb =
+  let open QCheck in
+  let gen =
+    let open Gen in
+    let* n_rows = int_range 1 20 in
+    let* n_cols = int_range 1 10 in
+    let* rows =
+      array_size (return n_rows) (array_size (return n_cols) cell_with_nan_gen)
+    in
+    return (frame_from_rows ~n_cols rows)
+  in
+  make
+    ~print:(fun f ->
+      let n_rows, n_cols = frame_print_shape f in
+      Printf.sprintf "<daily frame nan rows=%d cols=%d>" n_rows n_cols)
+    gen
+
+(* One cell for the well-conditioned arb: ~5% NaN density, otherwise finite
+   in [-100, 100] per RFC 0050 §R1 (two-pass kernel agrees with Pandas to
+   1e-10 inside this bucket). *)
+let cell_with_nan_bounded_gen =
+  let open QCheck.Gen in
+  let* roll = int_range 0 19 in
+  if roll = 0 then return Float.nan else float_range (-100.0) 100.0
+
+(* Generate one row that is guaranteed to contain ≥2 distinct non-NaN cells.
+   Two anchor values are drawn from [-100, 100] (second bumped by [Float.succ]
+   if it collides with the first), then placed at two random column positions;
+   the remaining cells may be NaN or any finite value in [-100, 100]. *)
+let row_zscore_wellconditioned_gen ~n_cols =
+  let open QCheck.Gen in
+  let* anchor_a = float_range (-100.0) 100.0 in
+  let* anchor_b_raw = float_range (-100.0) 100.0 in
+  let anchor_b =
+    if Float.equal anchor_a anchor_b_raw then Float.succ anchor_b_raw
+    else anchor_b_raw
+  in
+  let* positions = shuffle_array (Array.init n_cols (fun j -> j)) in
+  let pos_a = positions.(0) in
+  let pos_b = positions.(1) in
+  let* row = array_size (return n_cols) cell_with_nan_bounded_gen in
+  let row = Array.copy row in
+  row.(pos_a) <- anchor_a;
+  row.(pos_b) <- anchor_b;
+  return row
+
+let daily_frame_zscore_well_conditioned_arb =
+  let open QCheck in
+  let gen =
+    let open Gen in
+    let* n_rows = int_range 1 20 in
+    let* n_cols = int_range 2 10 in
+    let* rows =
+      array_size (return n_rows) (row_zscore_wellconditioned_gen ~n_cols)
+    in
+    return (frame_from_rows ~n_cols rows)
+  in
+  make
+    ~print:(fun f ->
+      let n_rows, n_cols = frame_print_shape f in
+      Printf.sprintf "<daily frame zscore-wc rows=%d cols=%d>" n_rows n_cols)
+    gen
+
 (* Comparators — lifted verbatim from test/unit/cairos/test_series_scan.ml *)
 
 (* Three-branch NaN-aware tolerance comparator per

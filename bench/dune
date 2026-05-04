@@ -101,6 +101,18 @@
   cairos_bench_emit))
 
 (executable
+ (name bench_frame_xsec)
+ (modules bench_frame_xsec)
+ (libraries
+  cairos
+  nx
+  bechamel
+  bechamel-notty
+  notty.unix
+  unix
+  cairos_bench_emit))
+
+(executable
  (name bench_compare)
  (modules bench_compare)
  (libraries cairos_bench_emit))
