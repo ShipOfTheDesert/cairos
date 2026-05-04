@@ -60,3 +60,84 @@ val describe : 'freq t -> (string * column_stats) list
     entry per column in insertion order. If a column is all-NaN, [count] is [0]
     and all float fields are [Float.nan]. Uses population standard deviation
     (ddof=0). *)
+
+(** {1 Cross-sectional operations}
+
+    All three operations traverse the input frame row-by-row. At each timestamp
+    the per-column values are gathered into a length-[C] buffer and the
+    operation reduces, ranks, or normalises across that buffer. NaN cells are
+    excluded from the per-row aggregate but preserved as NaN in the output.
+
+    All three are total: no [result], no exceptions. Edge cases (single-column
+    frame, all-NaN row, constant row, ≤1-non-NaN-cell row for [zscore]) emit
+    [Float.nan] at the appropriate cells per the PRD.
+
+    Output frequency tag and index are structurally identical to the input
+    frame's: same length, same [Ptime.t] array, same order.
+
+    Performance: the column-major [Frame.t] layout is optimised for up to ~500
+    instruments. Cross-sectional operations above ~1000 instruments require a
+    matrix-backed [Frame] (post-MVP, not yet landed). The per-row scratch buffer
+    is allocated once outside the row loop and reused. *)
+
+val column_map :
+  f:(float array -> float) ->
+  'freq t ->
+  ('freq, (float, Bigarray.float64_elt) Nx.t) Series.t
+(** [column_map ~f frame] reduces the cross-section of [frame] at each timestamp
+    to a single float via [f].
+
+    For each timestamp [t] in the input frame, [f] is invoked exactly once with
+    a [float array] holding the per-column values at [t] in [columns frame]
+    order. The return value becomes the corresponding cell in the output series.
+    NaN cells reach [f] as [Float.nan]; [f] is responsible for its own NaN
+    handling.
+
+    The output series carries the input frame's ['freq] phantom tag and the same
+    [Index.t]. [Series.length output = Index.length (index frame)].
+
+    The buffer passed to [f] is reused across timestamps; [f] must not retain a
+    reference to it across calls. ([f] may copy out values it needs to keep.) *)
+
+val rank : 'freq t -> 'freq t
+(** [rank frame] returns a frame of the same shape where each cell holds the
+    cross-sectional rank of the corresponding input cell among the non-NaN cells
+    in its row.
+
+    Ranks are 1-based: the smallest non-NaN value at a timestamp gets rank
+    [1.0]; the largest gets rank [N], where [N] is the count of non-NaN cells at
+    that timestamp. Ties resolve to the average of the rank positions they would
+    occupy (matching Pandas [DataFrame.rank(axis=1, method='average')]).
+
+    NaN cells in the input remain [Float.nan] in the output and are excluded
+    from [N]. A row of all-NaN cells produces an all-NaN output row. A
+    single-column frame produces an output where every non-NaN cell is [1.0]. A
+    constant row of [N] non-NaN cells produces [N] cells all holding
+    [(N + 1) / 2].
+
+    The output frame carries the input's ['freq] phantom tag, the same
+    [Index.t], and the same column names in the same order.
+
+    Performance: see {!column_map}'s note on the ~500-instrument boundary. *)
+
+val zscore : 'freq t -> 'freq t
+(** [zscore frame] returns a frame of the same shape where each cell holds the
+    cross-sectional z-score of the corresponding input cell relative to the
+    non-NaN cells in its row.
+
+    For each timestamp [t]: let [N] be the count of non-NaN cells at [t], [m]
+    their mean, [s] their sample standard deviation ([ddof=1], matching
+    [Cairos_finance.annualised_vol]). The output at column [c] and timestamp [t]
+    is [(input[c, t] -. m) /. s] when [N >= 2] and [s <> 0]; [Float.nan]
+    otherwise. NaN cells in the input remain [Float.nan].
+
+    Edge cases:
+    - All-NaN row → all-NaN output row.
+    - Constant row ([s = 0]) → all-NaN output row (NaN cells stay NaN).
+    - Row with [≤ 1] non-NaN cell → all-NaN output row.
+    - Single-column frame → every output cell is [Float.nan].
+
+    The output frame carries the input's ['freq] phantom tag, the same
+    [Index.t], and the same column names in the same order.
+
+    Performance: see {!column_map}'s note on the ~500-instrument boundary. *)

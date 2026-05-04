@@ -112,6 +112,40 @@ val paired_overlapping_daily_arb :
     shrinking [len_a]). Default integer shrinking on the underlying generators
     would not preserve the joint constraint. *)
 
+(** {1 Frame arbitraries}
+
+    Each frame arb builds a [[`Daily]] frame whose columns share an index
+    derived from {!epoch_2024_01_01_utc}. Internal [Frame.of_series] failures on
+    duplicate names or index mismatch are unreachable by construction (each
+    column is built from {!make_series_from_floats} at the same length, with
+    distinct programmatic names [c0..c{C-1}]) and terminate with [failwith] per
+    [~/.claude/solutions/ocaml/qcheck-generator-failwith.md]. *)
+
+val daily_frame_distinct_floats_arb : [ `Daily ] Cairos.Frame.t QCheck.arbitrary
+(** Daily frame with [1..20] rows and [1..10] columns of finite, row-wise
+    distinct floats. Distinctness within each row is enforced by sorting that
+    row's draws and bumping any colliding cell by [Float.succ] before shuffling,
+    so the post-shuffle multiset is guaranteed strict-distinct. Used by the rank
+    no-tie permutation/order-preservation properties. *)
+
+val daily_frame_finite_floats_with_nan_arb :
+  [ `Daily ] Cairos.Frame.t QCheck.arbitrary
+(** Daily frame with [1..20] rows and [1..10] columns. Each cell is [Float.nan]
+    with probability ~5% (one roll in twenty); otherwise drawn from
+    [Gen.float_range (-10.0) 10.0]. The narrow bucket lets ties arise naturally
+    — used by rank's tie-aware [N(N+1)/2] sum invariant where the property must
+    hold across arbitrary tie patterns. *)
+
+val daily_frame_zscore_well_conditioned_arb :
+  [ `Daily ] Cairos.Frame.t QCheck.arbitrary
+(** Daily frame with [1..20] rows and [2..10] columns. Every row contains at
+    least two distinct non-NaN cells, guaranteeing non-zero sample variance (RFC
+    0050 §R1 well-conditioned constraint at the [zscore] mean/std invariants).
+    Distinctness is enforced by drawing two anchor values per row, bumping the
+    second by [Float.succ] if it collides, then placing them at two random
+    column positions; remaining cells may be NaN or any finite value in
+    [[-100, 100]]. *)
+
 (** {1 Shrinkers}
 
     Exposed because per-test files may want to compose shrinking with a further
