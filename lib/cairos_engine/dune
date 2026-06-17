@@ -1,0 +1,4 @@
+(library
+ (name cairos_engine)
+ (public_name cairos_engine)
+ (libraries cairos ptime nx bigarray))

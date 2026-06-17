@@ -101,6 +101,7 @@ validate-generate:
 validate-check:
     opam exec -- dune exec test/unit/cairos_finance/cross_validate.exe
     opam exec -- dune exec test/unit/cairos/cross_validate_frame.exe
+    opam exec -- dune exec test/unit/cairos_engine/cross_validate.exe
 
 validate:
     #!/usr/bin/env bash
