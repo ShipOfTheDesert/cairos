@@ -84,6 +84,25 @@
   (alcotest :with-test)))
 
 (package
+ (name cairos_engine)
+ (synopsis "Vectorized backtest engine for Cairos time-series")
+ (description
+  "Vectorized backtest loop producing equity curves, returns, weights, and round-trip trade records from price and signal frames")
+ (depends
+  cairos
+  ocaml
+  nx
+  ptime
+  (alcotest :with-test)
+  (qcheck-core :with-test)
+  (qcheck-alcotest :with-test)
+  (cairos_finance :with-test)
+  (cairos_io :with-test)
+  (fmt :with-test)
+  (bechamel :with-test)
+  (bechamel-notty :with-test)))
+
+(package
  (name cairos_jupyter)
  (synopsis "Jupyter notebook adapter for Cairos")
  (description
