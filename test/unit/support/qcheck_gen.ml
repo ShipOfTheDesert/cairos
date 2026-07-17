@@ -5,8 +5,8 @@ let default_seed = 0xC41A05
 
 (* Index/series factories — total, generator-safe.
 
-   Locally-abstract [type freq] match on the [Freq.t] GADT per
-   ~/.claude/solutions/ocaml/gadt-exhaustiveness-locally-abstract-type.md. *)
+   Locally-abstract [type freq] match on the [Freq.t] GADT for
+   exhaustiveness. *)
 let make_series_from_floats : type freq.
     freq:freq Cairos.Freq.t ->
     float array ->
@@ -24,8 +24,8 @@ let make_series_from_floats : type freq.
     Array.init n (fun i ->
         epoch_2024_01_01_utc +. (float_of_int i *. bucket_seconds))
   in
-  (* Unreachable: synthetic strictly-increasing finite POSIX seconds. RFC 0030
-     §R4 — generators must terminate unreachable [result] branches with
+  (* Unreachable: synthetic strictly-increasing finite POSIX seconds.
+     Generators must terminate unreachable [result] branches with
      [failwith], not propagate [result], or QCheck's shrinker mis-reports. *)
   let idx =
     match Cairos.Index.of_unix_floats freq ts with
@@ -34,8 +34,8 @@ let make_series_from_floats : type freq.
         failwith ("qcheck_gen: of_unix_floats: " ^ Cairos.Index.err_to_string e)
   in
   let values = Nx.create Nx.float64 [| n |] xs in
-  (* Unreachable: index length matches values length by construction. RFC 0030
-     §R4 — see comment above. *)
+  (* Unreachable: index length matches values length by construction.
+     See comment above. *)
   match Cairos.Series.make idx values with
   | Ok s -> s
   | Error e -> failwith ("qcheck_gen: Series.make: " ^ e)
@@ -44,7 +44,7 @@ let make_series_from_floats : type freq.
    [epoch_2024_01_01_utc + start_day * 86_400.0]. Used by
    [paired_overlapping_daily_arb] (and its shrinker) to position the second
    series at an arbitrary offset. Same unreachable-result discipline as
-   [make_series_from_floats] (RFC 0030 §R4). *)
+   [make_series_from_floats]. *)
 let make_offset_daily_series ~start_day xs =
   let n = Array.length xs in
   let ts =
@@ -209,7 +209,7 @@ let paired_aligned_daily_arb =
    second series begins on a day inside the first's range, which pins
    overlap ≥ 1 by construction without any [total]-level constraint. The
    simpler parameterisation removes the latent default-shrinker hazard
-   flagged in the original RFC §R2: the four-tuple's joint constraint
+   in the original four-tuple: its joint constraint
    (overlap ≤ total ∧ len_x_extra ≤ total - overlap) is not preserved by
    independent integer shrinks, while the three-tuple's only constraint is
    [start_b_offset < len_a], which the custom shrinker below preserves
@@ -225,7 +225,7 @@ let paired_aligned_daily_arb =
 
    Truncation reuses the leading prefix of [xs_a] / [xs_b], so values are
    not shrunk independently — the structural shape is what the consuming
-   properties (TP-Align-1, 2, 4 + TP-Frame-2, 3) actually depend on. *)
+   properties actually depend on. *)
 let paired_overlapping_daily_arb =
   let open QCheck in
   let gen =
@@ -277,8 +277,7 @@ let paired_overlapping_daily_arb =
    fail by construction: column names are programmatically distinct and every
    column shares the same epoch-anchored daily index built by
    [make_series_from_floats]. The unreachable [Error] branch terminates with
-   [failwith] per ~/.claude/solutions/ocaml/qcheck-generator-failwith.md (RFC
-   0030 §R4 — same carve-out as the series factories above). *)
+   [failwith] — same carve-out as the series factories above. *)
 
 let frame_from_rows ~n_cols rows =
   let columns =
@@ -372,7 +371,7 @@ let daily_frame_finite_floats_with_nan_arb =
     gen
 
 (* One cell for the well-conditioned arb: ~5% NaN density, otherwise finite
-   in [-100, 100] per RFC 0050 §R1 (two-pass kernel agrees with Pandas to
+   in [-100, 100] (two-pass kernel agrees with Pandas to
    1e-10 inside this bucket). *)
 let cell_with_nan_bounded_gen =
   let open QCheck.Gen in
@@ -419,8 +418,7 @@ let daily_frame_zscore_well_conditioned_arb =
 
 (* Comparators — lifted verbatim from test/unit/cairos/test_series_scan.ml *)
 
-(* Three-branch NaN-aware tolerance comparator per
-   ~/.claude/solutions/general/nan-aware-tolerance-comparator.md:
+(* Three-branch NaN-aware tolerance comparator:
    branch on is_nan for both operands before subtraction.
 
    Infinity handling: after the nan branches, short-circuit on [a = b] so

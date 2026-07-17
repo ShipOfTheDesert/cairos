@@ -1,7 +1,7 @@
 let epoch_2024_01_01_utc = 1_704_067_200.0
 
 (* The two [failwith]s below are unreachable by construction (synthetic UTC
-   epoch + length-matched [Nx.t]) and are intentional per RFC 0030 §R4: a
+   epoch + length-matched [Nx.t]) and are intentional: a
    generator must return [Series.t], not [(_, string) result]. Do not "fix"
    by propagating [result] — that breaks the QCheck arbitrary contract. *)
 let make_daily_series_from_floats (xs : float array) :

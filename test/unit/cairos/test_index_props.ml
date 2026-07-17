@@ -1,9 +1,9 @@
-(* Property suite for [Cairos.Index]. RFC 0046 TP-Index-1..3.
+(* Property suite for [Cairos.Index].
 
-   Each property runs at [~count:200] per RFC 0046 Test Plan; CI/local
-   reproducibility is provided by [Qcheck_gen.pin_seed_from_env] (FR-4). *)
+   Each property runs at [~count:200]; CI/local
+   reproducibility is provided by [Qcheck_gen.pin_seed_from_env]. *)
 
-(* TP-Index-1 — round-trip a synthetic daily index through [Ptime.to_float_s]
+(* Round-trip a synthetic daily index through [Ptime.to_float_s]
    and recover the original POSIX seconds within relative tol [1e-15]. At
    the 2024-era POSIX scale (~1.7e9), this translates to ~1.7 microseconds
    absolute — well above [Ptime]'s picosecond precision but tight enough to
@@ -27,7 +27,7 @@ let index_round_trip_via_timestamps =
            (fun e a -> Qcheck_gen.float_approx_equal ~tol:1e-15 e a)
            expected actual)
 
-(* TP-Index-2 — [Index.length] tracks the underlying timestamp array. Catches
+(* [Index.length] tracks the underlying timestamp array. Catches
    a regression where the length accessor decouples from the array. *)
 let index_length_equals_timestamp_array_length =
   QCheck.Test.make ~count:200 ~name:"index_length_equals_timestamp_array_length"
@@ -35,7 +35,7 @@ let index_length_equals_timestamp_array_length =
       let idx = Cairos.Series.index s in
       Cairos.Index.length idx = Array.length (Cairos.Index.timestamps idx))
 
-(* TP-Index-3 — [of_unix_floats] rejects non-monotonic input. Generator picks
+(* [of_unix_floats] rejects non-monotonic input. Generator picks
    a length [n ∈ [3, 10]] and two indices [i, j ∈ [0, n-1]], builds a
    strictly-increasing base array [epoch + k * 86_400] and swaps positions
    [i] and [j]. Distinct base values guarantee that any [i ≠ j] swap breaks

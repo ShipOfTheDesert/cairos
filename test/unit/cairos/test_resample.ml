@@ -226,8 +226,8 @@ let rejects_same_frequency () =
    under test is a single rank-guard branch at lib/resample.ml:98 that does
    not depend on input shape, length, or values, so the rejection is
    deterministic — a single fixed input is sufficient to pin it. Originally
-   landed as a [~count:200] QCheck property (TP-Resample-3) in
-   test_resample_props.ml; per RFC 0046 review C9, demoted to a
+   landed as a [~count:200] QCheck property in
+   test_resample_props.ml, then demoted to a
    deterministic Alcotest case here so the [~count:200] declaration in
    the property file does not promise random shape coverage that the
    contract neither needs nor benefits from. *)

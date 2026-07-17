@@ -47,7 +47,7 @@ let annualised_return (returns : ('freq, (float, 'b) Nx.t) Cairos.Series.t) :
     float =
   (* Single-pass fold: accumulate the (1 + r) product and the count of
      non-NaN periods together. Reusing [cumulative_return] would require a
-     second pass to compute [n] (see RFC §"Options Considered" Option C). *)
+     second pass to compute [n]. *)
   let arr = Nx.to_array (Cairos.Series.values returns) in
   let len = Array.length arr in
   let product = ref 1.0 in

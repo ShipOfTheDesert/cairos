@@ -2,7 +2,7 @@
    [Cairos_engine.Backtest.run].
 
    Each test constructs inputs that violate exactly one of the seven
-   preconditions enumerated in RFC 0052 "Entrypoint validation order"
+   preconditions enumerated in the entrypoint validation order
    (mirrored in [lib/cairos_engine/cairos_engine.ml] [validate_inputs])
    and asserts [Backtest.run] returns [Error] with a message identifying
    the violated precondition. *)
@@ -141,7 +141,7 @@ let rebalance_on_last_bar () =
   in
   assert_error_with_substring ~substr:"no T+1 open available" result
 
-(* Step 7 — every rebalance has all-zero target weights (PRD 0053 FR-11). *)
+(* Step 7 — every rebalance has all-zero target weights. *)
 let all_zero_target_weights () =
   let dates = [| "2024-01-01"; "2024-01-02"; "2024-01-03" |] in
   let prices = [| 1.0; 1.0; 1.0 |] in

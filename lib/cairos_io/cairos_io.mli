@@ -21,7 +21,7 @@
 
     Files that violate these assumptions should be pre-processed by the caller
     or loaded through a dedicated CSV library. If production data requires
-    quoted-field support, surface the tradeoff via the PRD FR-9 gate. *)
+    quoted-field support, surface the tradeoff before adding it. *)
 
 open Cairos
 
@@ -74,4 +74,4 @@ val frame_of_csv_with :
     multi-instrument CSV with explicit layout. Every non-timestamp column is
     loaded as an instrument column. When [~header:false], columns are named
     positionally [col_1], [col_2], … starting from the first non-timestamp
-    column (PRD FR-8). *)
+    column. *)

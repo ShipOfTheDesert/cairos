@@ -6,8 +6,8 @@
    produced by the just bench-compare shell loop, validates that every
    baseline (bench, name) is covered by current, then diffs wall-clock cells.
    Exits non-zero on any baseline cell missing from current OR any >20%
-   wall-clock regression.  Threshold is hardcoded per PRD Decision 3 / RFC
-   §Options Considered E.  Allocation cells are ignored per PRD Decision 2. *)
+   wall-clock regression.  The 20% threshold is hardcoded.  Allocation cells
+   are ignored. *)
 
 let print_regression (r : Bench_emit.regression) =
   Printf.printf "regression: %s/%s  baseline=%g  current=%g  ratio=%.2fx\n"

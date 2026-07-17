@@ -1,17 +1,17 @@
 (* Run with: opam exec -- dune exec bench/bench_frame_xsec.exe
 
    Benchmark: Cairos.Frame cross-sectional operations [column_map], [rank], and
-   [zscore] at C in {100, 500} on a 1000-bar daily frame (PRD FR-8). Six cells
+   [zscore] at C in {100, 500} on a 1000-bar daily frame. Six cells
    total; 18 records across the three Bechamel instances.
 
    The 1000-bar frame is built once per indexed [n] via
-   [Bench_fixtures.make_frame], hoisted outside [Staged.stage] per the
-   bechamel-staged-setup-hoisting handbook. The reducer for [column_map] is a
+   [Bench_fixtures.make_frame], hoisted outside [Staged.stage] following the
+   bechamel staged-setup-hoisting pattern. The reducer for [column_map] is a
    no-allocation closure ([first +. last]) so the harness measures the
    row-iteration kernel rather than the user-supplied reduction.
 
-   Per RFC 0050 §Options Considered F: one bench file with three named tests
-   sharing setup, grouped under "frame_xsec".
+   One bench file with three named tests sharing setup, grouped under
+   "frame_xsec".
 
    Prerequisite: this file is only built when cairos's :with-test deps are
    installed (bechamel + bechamel-notty). Run
@@ -69,7 +69,7 @@ let benchmark () =
      quota collects a single sample, leaving Bechamel's OLS [r_square] as
      NaN, which trips [Yojson.Basic]'s NaN guard in the JSON tail. 12s lets
      OLS fit ≥ 3 samples per cell while keeping the six-cell wall-time
-     comfortably under the bench-suite NFR-3 budget. *)
+     comfortably under the bench-suite time budget. *)
   let cfg =
     Benchmark.cfg ~limit:3000 ~quota:(Time.second 12.0) ~stabilize:true ()
   in

@@ -1,11 +1,10 @@
 (* Run with: opam exec -- dune exec bench/bench_resample.exe
 
    Benchmark: Cairos.Resample.resample daily->weekly with [~agg:`Last] on a
-   ~2_500-bar (10-year) daily float64 series (PRD FR-1 line 4, partial).
+   ~2_500-bar (10-year) daily float64 series.
 
    Daily->monthly cell deferred — Cairos.Freq.t does not include Month. To be
-   added in the feature that extends Freq.t. See RFC 0048 §Resolved Open
-   Questions Q1.
+   added in the feature that extends Freq.t.
 
    Prerequisite: this file is only built when cairos's :with-test deps are
    installed (bechamel + bechamel-notty). Run

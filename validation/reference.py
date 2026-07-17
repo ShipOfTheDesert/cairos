@@ -55,7 +55,7 @@ def annualised_vol(prices: list[float], ann_factor: float = 252.0) -> float:
     returns = pd.Series(prices).pct_change().dropna()
     # pd.Series.std() defaults to ddof=1 (sample std). This MUST stay ddof=1
     # to match the OCaml implementation and the chosen Pandas-aligned
-    # convention (PRD 0021 Decision 1). Do not switch to NumPy .std() without
+    # convention. Do not switch to NumPy .std() without
     # passing ddof=1 explicitly — NumPy defaults to ddof=0.
     return float(returns.std() * math.sqrt(ann_factor))
 
@@ -70,7 +70,7 @@ def sharpe(
     excess = returns - rf_per_period
     # ddof=1 — see comment in annualised_vol.
     std = excess.std()
-    # PRD 0021 Decision 4: constant series (std == 0) yields nan, matching
+    # Constant series (std == 0) yields nan, matching
     # the OCaml semantic. Without this guard, Pandas would return ±inf
     # whenever excess.mean() != 0 (e.g. flat returns with risk_free > 0).
     if len(excess) < 2 or std == 0.0:
@@ -91,8 +91,8 @@ def max_drawdown(prices: list[float]) -> float:
     wealth = (1 + returns).cumprod()
     peak = wealth.cummax()
     dd = (wealth - peak) / peak
-    # Decision 3: returned as a positive magnitude.
-    # Decision 4: flat series produces dd = [0,0,...], min = 0.0, abs = 0.0
+    # Returned as a positive magnitude.
+    # Flat series produces dd = [0,0,...], min = 0.0, abs = 0.0
     # — no special-case guard needed; Pandas yields 0.0 directly.
     return float(abs(dd.min()))
 
@@ -109,13 +109,12 @@ def cumsum_series(prices: list[float]) -> list[tuple[int, float]]:
     return list(enumerate(result.tolist()))
 
 
-# --- Frame cross-sectional fixtures (RFC 0050) ---------------------------------
+# --- Frame cross-sectional fixtures --------------------------------------------
 #
-# Encodes the PRD 0049 contract: rank uses method='average' tie-breaking, zscore
-# uses ddof=1, NaN cells passthrough and are excluded from N. Per
-# ~/.claude/solutions/general/oracle-encodes-contract-not-library-default.md
-# the oracle encodes the contract regardless of whether Pandas defaults
-# coincidentally agree: PRD FR-3 specifies all-NaN output rows for std=0
+# Encodes the cross-sectional contract: rank uses method='average' tie-breaking,
+# zscore uses ddof=1, NaN cells passthrough and are excluded from N. The oracle
+# encodes the contract regardless of whether Pandas defaults coincidentally
+# agree: the contract specifies all-NaN output rows for std=0
 # (constant row) and N<2 (≤1 non-NaN cell), so [frame_zscore] explicitly
 # masks those rows after the arithmetic — independent of whether [df.std]
 # returns 0 or NaN for a particular fixture shape.
@@ -136,7 +135,7 @@ FRAME_XSEC_INDEX = [
 ]
 
 FRAME_XSEC_FIXTURES: dict[str, dict] = {
-    # Distinct-and-tie mix; bounded to [-100, 100] per RFC 0050 R1.
+    # Distinct-and-tie mix; bounded to [-100, 100].
     "full": {
         "columns": ["a", "b", "c", "d"],
         "rows": [
@@ -168,7 +167,7 @@ FRAME_XSEC_FIXTURES: dict[str, dict] = {
             [-3.14, 2.71, 1.41, -1.0],
         ],
     },
-    # Row 7 is a constant non-NaN row — std=0 → zscore all-NaN per FR-3.
+    # Row 7 is a constant non-NaN row — std=0 → zscore all-NaN.
     "constant_row": {
         "columns": ["a", "b", "c", "d"],
         "rows": [
@@ -185,7 +184,7 @@ FRAME_XSEC_FIXTURES: dict[str, dict] = {
         ],
     },
     # 10×1 — every row has N≤1 non-NaN cell. rank → 1.0 for non-NaN rows,
-    # NaN for the NaN row; zscore → all-NaN per FR-3 (≤1-non-NaN-cell row).
+    # NaN for the NaN row; zscore → all-NaN (≤1-non-NaN-cell row).
     "single_column": {
         "columns": ["a"],
         "rows": [
@@ -241,18 +240,18 @@ def write_frame_expected(
 
 def frame_rank(rows: list[list[float]], columns: list[str]) -> pd.DataFrame:
     df = pd.DataFrame(rows, columns=columns)
-    # method='average' per PRD 0049 Decision 1 (Pandas-aligned tie-breaking).
+    # method='average' (Pandas-aligned tie-breaking).
     return df.rank(axis=1, method="average")
 
 
 def frame_zscore(rows: list[list[float]], columns: list[str]) -> pd.DataFrame:
     df = pd.DataFrame(rows, columns=columns)
-    # ddof=1 per PRD 0049 Decision 2 — see comment in annualised_vol.
+    # ddof=1 — see comment in annualised_vol.
     n_per_row = df.notna().sum(axis=1)
     mean = df.mean(axis=1, skipna=True)
     std = df.std(axis=1, ddof=1, skipna=True)
     result = df.sub(mean, axis=0).div(std, axis=0)
-    # PRD FR-3 contract: rows with N<2 or std=0 produce all-NaN output. Apply
+    # Contract: rows with N<2 or std=0 produce all-NaN output. Apply
     # explicitly rather than relying on Pandas' default arithmetic happening
     # to emit NaN for these shapes.
     invalid_row = (n_per_row < 2) | std.eq(0.0)
@@ -260,43 +259,39 @@ def frame_zscore(rows: list[list[float]], columns: list[str]) -> pd.DataFrame:
     return result
 
 
-# --- Backtest engine fixtures (RFC 0056) ---------------------------------------
+# --- Backtest engine fixtures --------------------------------------------------
 #
-# Encodes RFC 0052's seven-step rebalance loop, RFC 0052 OC-3 / OC-6
-# mark-to-market formula (extended to non-fully-invested portfolios per RFC
-# 0056 §Implementation Decisions Decision 1), the proportional sign-flip cost
-# split (RFC 0056 Decision 2), the turnover-notional cost formula
+# Encodes the seven-step rebalance loop, the mark-to-market formula (extended
+# to non-fully-invested portfolios), the proportional sign-flip cost split, the
+# turnover-notional cost formula
 # [(commission +. slippage) *. abs(weight_delta) *. nav_after_mtm], the
 # NAV-update ordering (deduct cost from nav_after_mtm, then apply new weights),
-# and the end-of-backtest force-close at the last bar's close with no exit cost
-# per PRD 0053 FR-10.
+# and the end-of-backtest force-close at the last bar's close with no exit cost.
 #
-# COST CONVENTION (RFC 0052 Amendment A1, ANALYSIS.md 2.1): cost is a fraction
-# of pre-cost NAV, never a function of the absolute price level. The pre-fix
-# formula multiplied by execution_price, which is dimensionally wrong; A1
-# superseded RFC 0052 OC-3's pinned formula. Both sides of the cross-validation
-# now use nav_after_mtm.
+# COST CONVENTION: cost is a fraction of pre-cost NAV, never a function of the
+# absolute price level. The pre-fix formula multiplied by execution_price,
+# which is dimensionally wrong; the fix superseded that pinned formula. Both
+# sides of the cross-validation now use nav_after_mtm.
 #
 # PROVENANCE: this backtest reference is still a transliteration of the OCaml
 # engine, not an independent oracle — it shares the engine's derivation, so
-# Layer 2 checks transcription only. Feature CG-5 replaces it wholesale with a
-# vectorbt-based independent oracle; correctness of the cost fix rests on the
+# Layer 2 checks transcription only. A later feature replaces it wholesale with
+# a vectorbt-based independent oracle; correctness of the cost fix rests on the
 # Layer 1 hand derivations in test_known_outcomes.ml, not on this file.
 #
-# Per ~/.claude/solutions/general/oracle-encodes-contract-not-library-default.md
-# this reference encodes RFC 0052's conventions (as amended by A1), not Pandas
-# defaults. There is no Pandas backtest primitive whose default this could
-# shadow; the conventions above are a from-scratch reimplementation of the
+# This reference encodes the engine's conventions (as amended by the cost fix),
+# not Pandas defaults. There is no Pandas backtest primitive whose default this
+# could shadow; the conventions above are a from-scratch reimplementation of the
 # OCaml engine in NumPy.
 #
-# Trade column order pinned by RFC 0054 OC-5 — do not reorder without updating
-# lib/cairos_engine/cairos_engine.mli's Trade.t field declaration order.
+# Trade column order is pinned — do not reorder without updating the
+# Trade.t field declaration order.
 
 BACKTEST_INSTRUMENTS = ["A", "B", "C", "D", "E"]
 BACKTEST_N_BARS = 50
 # Weekly rebalances on a 50-bar daily fixture: bars [2, 7, 12, 17, 22, 27, 32,
 # 37, 42, 47]. First rebalance at bar 2 (not bar 0) so equity_curve[0] == 1.0
-# holds (RFC 0052 OC-11 — first equity-curve cell is 1.0 only when bar 0 is
+# holds (first equity-curve cell is 1.0 only when bar 0 is
 # not a rebalance). Last rebalance at bar 47 so exec_bar = 48 is valid (the
 # engine's entrypoint precondition step 6 forbids a rebalance at the last
 # bar). Both backtest_reference() and the OCaml cross_validate harness
@@ -327,7 +322,7 @@ def backtest_dates() -> pd.DatetimeIndex:
 
 def backtest_prices_df() -> pd.DataFrame:
     # Normalised prices anchored at 1.0. Under the turnover-notional cost
-    # convention (RFC 0052 Amendment A1), cost is a fraction of pre-cost NAV
+    # convention, cost is a fraction of pre-cost NAV
     # and is independent of the absolute price level, so the anchor is now a
     # plain normalisation choice, not a cost-collapse-avoidance measure: the
     # pre-fix execution_price formula drove per-rebalance cost into the
@@ -376,9 +371,9 @@ def backtest_reference(
     equity_buf = [0.0] * n_bars
 
     for t in range(n_bars):
-        # Mark-to-market step (RFC 0056 Decision 1 — fractional-weight
-        # weighted-return form, equivalent to OC-6's literal wording at
-        # full investment, well-defined for shorts and partial cash).
+        # Mark-to-market step (fractional-weight weighted-return form,
+        # equivalent to the literal formula at full investment, well-defined
+        # for shorts and partial cash).
         if t > 0:
             nav_pre = current_nav
             total_ret = 0.0
@@ -392,7 +387,7 @@ def backtest_reference(
                         ift["pnl_acc"] += w * nav_pre * r
             current_nav = nav_pre * (1.0 + total_ret)
 
-        # Rebalance step (RFC 0052 OC-6 step 1–7 / NAV-update ordering OC-3).
+        # Rebalance step (seven-step rebalance loop / NAV-update ordering).
         if t in rebalance_set:
             exec_bar = t + 1
             nav_after_mtm = current_nav
@@ -404,10 +399,10 @@ def backtest_reference(
                 w_old = current_weights[j]
                 dw = target - w_old
                 # Cost is turnover (|dw|) as a fraction of pre-cost NAV
-                # (nav_after_mtm), not of the absolute price level. See RFC 0052
-                # Amendment A1 and ANALYSIS.md 2.1 — the price-dimensioned form
-                # was dimensionally wrong. exec_price is bound only in the
-                # second (trade-record) loop below, where it is a trade field.
+                # (nav_after_mtm), not of the absolute price level. The
+                # price-dimensioned form was dimensionally wrong. exec_price is
+                # bound only in the second (trade-record) loop below, where it
+                # is a trade field.
                 cost = cs * abs(dw) * nav_after_mtm
                 dws[j] = dw
                 costs[j] = cost
@@ -450,7 +445,7 @@ def backtest_reference(
                     assert ift is not None
                     ift["pnl_acc"] -= cost_j
                 else:
-                    # Sign flip — proportional cost split (RFC 0056 Decision 2).
+                    # Sign flip — proportional cost split.
                     abs_old = abs(w_old)
                     abs_new = abs(target)
                     denom = abs_old + abs_new
@@ -482,7 +477,7 @@ def backtest_reference(
 
         equity_buf[t] = current_nav
 
-    # End-of-backtest force-close (PRD 0053 FR-10): each still-open trade
+    # End-of-backtest force-close: each still-open trade
     # resolves at the last bar's close with no exit cost.
     last_bar = n_bars - 1
     last_ts = timestamps[last_bar]
@@ -560,7 +555,7 @@ def write_backtest_trades_csv(name: str, trades: list[_Trade]) -> None:
 def _check_backtest_invariants(
     equity_curve: pd.Series, trades: list[_Trade]
 ) -> None:
-    # Layer 3 invariants from RFC 0056 §Test Plan applied to the Pandas
+    # Layer 3 invariants applied to the Pandas
     # output. If any of these fail the Python implementation is wrong and
     # must be fixed before Task 6 lands.
     assert equity_curve.iloc[0] == 1.0, (

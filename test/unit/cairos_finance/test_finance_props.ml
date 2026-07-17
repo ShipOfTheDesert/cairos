@@ -1,19 +1,18 @@
-(* Property suite for [Cairos_finance]. RFC 0046 TP-Finance-CR1..MDD2 (twelve
-   properties spanning all six scalar/series metrics).
+(* Property suite for [Cairos_finance]. Twelve properties spanning all six
+   scalar/series metrics.
 
-   Each property runs at [~count:200] per RFC 0046 Test Plan; CI/local
-   reproducibility is provided by [Qcheck_gen.pin_seed_from_env] (FR-4).
+   Each property runs at [~count:200]; CI/local
+   reproducibility is provided by [Qcheck_gen.pin_seed_from_env].
 
    Inputs come from [Qcheck_gen.daily_returns_series_arb] unless a closed-form
    invariant requires constructing the input directly (constant-r, all-zero,
-   strict-positive). Per Appendix A row 1, [max_drawdown] returns a
-   non-negative magnitude (sign flip from the epic phrasing). Per Appendix A
-   row 10, the [annualised_vol = 0.0] on a constant series is qualified to
-   [n >= 2] because ddof=1 std is undefined for n=1. Sharpe2 substitutes the
-   unsound additive-shift compensation from PRD/epic with scale-invariance at
-   [~risk_free:0.0] (RFC §G); the geometric per-period [risk_free] conversion
-   makes the additive form algebraically wrong, while scale-invariance is
-   exact. *)
+   strict-positive). [max_drawdown] returns a non-negative magnitude (a sign
+   flip from an earlier phrasing). The [annualised_vol = 0.0] on a constant
+   series is qualified to [n >= 2] because ddof=1 std is undefined for n=1.
+   Sharpe2 substitutes the unsound additive-shift compensation with
+   scale-invariance at [~risk_free:0.0]; the geometric per-period [risk_free]
+   conversion makes the additive form algebraically wrong, while
+   scale-invariance is exact. *)
 
 (* [series_is_non_constant s] is [true] when at least two elements of [s] differ.
    Used as a [QCheck.assume] guard for Sharpe properties whose live path
@@ -28,7 +27,7 @@ let series_is_non_constant s =
 
 (* === cumulative_return === *)
 
-(* TP-Finance-CR1 — finite returns produce a finite cumulative_return. The
+(* Finite returns produce a finite cumulative_return. The
    generator yields values in [-0.5, 0.5] and length [2, 64]; the worst-case
    product (1.5)^64 is ~6.5e11, well within [Float.max]. Catches a regression
    that introduces a spurious overflow or NaN-corrupting accumulation. *)
@@ -37,7 +36,7 @@ let cumulative_return_finite_on_finite_input =
     Qcheck_gen.daily_returns_series_arb (fun s ->
       Float.is_finite (Cairos_finance.cumulative_return s))
 
-(* TP-Finance-CR2 — for an all-zero returns series, [cumulative_return] is
+(* For an all-zero returns series, [cumulative_return] is
    [0.0] within [~tol:1e-15] (empty / all-zero product is [1.0], minus 1).
    Generator builds the series directly with all zeros; length matches
    [daily_returns_series_arb] so the case distribution is comparable.
@@ -67,7 +66,7 @@ let cumulative_return_zero_on_all_zero =
         (Cairos_finance.cumulative_return s)
         0.0)
 
-(* TP-Finance-CR3 — for a constant returns series of length [n] and value [r],
+(* For a constant returns series of length [n] and value [r],
    [cumulative_return s = (1 +. r) ** float_of_int n -. 1.0] within [tol 1e-10].
    Both sides compute via [Float.pow] / repeated multiplication; the relative
    tolerance absorbs the ULP drift between accumulation orders. Catches a
@@ -95,7 +94,7 @@ let cumulative_return_constant_r_closed_form =
 
 (* === annualised_return === *)
 
-(* TP-Finance-AR1 — for a non-empty all-finite returns input,
+(* For a non-empty all-finite returns input,
    [annualised_return] is finite. Per cairos_finance.mli:30-31, empty / all-NaN
    yields [nan]; [daily_returns_series_arb] excludes those (length >= 2,
    values via [float_range] are finite). The closed-form is
@@ -110,7 +109,7 @@ let annualised_return_finite_or_nan_per_contract =
 
 (* === annualised_vol === *)
 
-(* TP-Finance-AV1 — for a finite returns input of length >= 2,
+(* For a finite returns input of length >= 2,
    [annualised_vol] is finite. ddof=1 std is undefined for n < 2 — the
    generator's length floor (2) covers the contract. *)
 let annualised_vol_finite_on_finite_input_n_ge_2 =
@@ -119,7 +118,7 @@ let annualised_vol_finite_on_finite_input_n_ge_2 =
     Qcheck_gen.daily_returns_series_arb (fun s ->
       Float.is_finite (Cairos_finance.annualised_vol s))
 
-(* TP-Finance-AV2 — Appendix A row 10: for a constant series of length n >= 2,
+(* For a constant series of length n >= 2,
    ddof=1 std is exactly 0.0, so [annualised_vol] is exactly 0.0. The n=1 nan
    case is the documented contract and is pinned by the deterministic
    Alcotest case [vol_single_non_nan_is_nan] in test_metrics.ml; this property
@@ -142,11 +141,11 @@ let annualised_vol_zero_on_constant_n_ge_2 =
   QCheck.Test.make ~count:200 ~name:"annualised_vol_zero_on_constant_n_ge_2"
     constant_n_ge_2_arb (fun s -> Cairos_finance.annualised_vol s = 0.0)
 
-(* TP-Finance-AV3 — sample std is shift-invariant, so
+(* Sample std is shift-invariant, so
    [annualised_vol (s +. c) = annualised_vol s] within [tol 1e-9]. The shift
-   is applied at the Nx-tensor level via [Nx.add_s] inside [Series.map] (per
-   ~/.claude/solutions/ocaml/cairos-series-map-is-tensor-level.md, [Series.map]
-   operates on the values payload as a whole tensor). Catches a regression
+   is applied at the Nx-tensor level via [Nx.add_s] inside [Series.map]
+   (since [Series.map] operates on the values payload as a whole tensor).
+   Catches a regression
    that sneaks the input mean into the std computation. *)
 let returns_with_shift_arb =
   let open QCheck in
@@ -172,7 +171,7 @@ let annualised_vol_invariant_under_additive_shift =
 
 (* === sharpe === *)
 
-(* TP-Finance-Sharpe1 — for a non-constant finite returns input of length >= 2,
+(* For a non-constant finite returns input of length >= 2,
    [sharpe ~risk_free:0.0] is finite. The constant case (std = 0) returns
    [nan] per cairos_finance.mli:71-73 and is pinned by the deterministic
    Alcotest case [sharpe_constant_returns_rf0_is_nan] in test_metrics.ml.
@@ -183,12 +182,12 @@ let sharpe_finite_on_non_constant_input =
       QCheck.assume (series_is_non_constant s);
       Float.is_finite (Cairos_finance.sharpe ~risk_free:0.0 s))
 
-(* TP-Finance-Sharpe2 — [sharpe ~risk_free:0.0 (k *. s)] equals
+(* [sharpe ~risk_free:0.0 (k *. s)] equals
    [sharpe ~risk_free:0.0 s] within [tol 1e-9] for [k > 0]. With
    [~risk_free:0.0], excess = returns; mean and ddof=1 std both scale by k,
    so the ratio is invariant. The [sqrt(ann_factor)] multiplier is constant
-   for daily input. Substituted by RFC §G for the unsound additive-shift
-   compensation in the PRD: [~risk_free] is geometrically converted per
+   for daily input. Substituted for the unsound additive-shift
+   compensation: [~risk_free] is geometrically converted per
    cairos_finance.mli:60, so an additive shift on the input is not exactly
    compensated by an additive shift on [~risk_free]. Scale-invariance at
    [~risk_free:0.0] is algebraically exact. The scale is applied at the
@@ -217,7 +216,7 @@ let sharpe_scale_invariant_at_zero_risk_free =
 
 (* === drawdown_series === *)
 
-(* TP-Finance-DD1 — every element of [drawdown_series s] is <= 0 and the
+(* Every element of [drawdown_series s] is <= 0 and the
    output series has the same length as the input. Pointwise: the output is
    [(wealth - peak) / peak] where [peak = cummax(wealth)], so wealth <= peak
    pointwise by construction. Length: [drawdown_series] is a series transform
@@ -236,9 +235,9 @@ let drawdown_series_pointwise_non_positive =
 
 (* === max_drawdown === *)
 
-(* TP-Finance-MDD1 — Appendix A row 1: [max_drawdown] is the magnitude of the
+(* [max_drawdown] is the magnitude of the
    worst peak-to-trough decline, returned as a non-negative fraction in
-   [0.0, 1.0]. The epic's [<= 0] phrasing was a sign flip; library contract
+   [0.0, 1.0]. An earlier [<= 0] phrasing was a sign flip; library contract
    wins. Catches a regression that returns the signed drawdown instead of its
    magnitude. *)
 let max_drawdown_non_negative =
@@ -246,7 +245,7 @@ let max_drawdown_non_negative =
     Qcheck_gen.daily_returns_series_arb (fun s ->
       Cairos_finance.max_drawdown s >= 0.0)
 
-(* TP-Finance-MDD2 — for strictly positive returns, the implied wealth index
+(* For strictly positive returns, the implied wealth index
    [cumprod(1 +. r)] is monotone-increasing, so the drawdown series is
    identically [0.0] and [max_drawdown s = 0.0] exactly. Generator restricts
    each return to [1e-6, 0.5] (strict positivity). *)

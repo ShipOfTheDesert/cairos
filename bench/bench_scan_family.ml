@@ -2,8 +2,8 @@
 
    Benchmark: prefix-accumulation family on a 100k-element daily float64
    series — Series.cumsum, Series.scan ( +. ) 0.0, and Series.cumprod.
-   Three named cells confirm O(n) wall-clock scaling at the PRD's pinned
-   100k size (PRD FR-1 line 5).
+   Three named cells confirm O(n) wall-clock scaling at the pinned
+   100k size.
 
    The same input series is reused across all three tests — they don't
    mutate input, and the scan family shares its hot-loop shape (single
@@ -13,7 +13,7 @@
 
    Quota tuning: kept at the precedent ~limit:3000 ~quota:2.0s per
    bench_cumprod.ml:56-57. At 100k each iteration is ~10x the 10k cell;
-   smoke runs land well under 10s end-to-end (NFR-3). If a future
+   smoke runs land well under 10s end-to-end. If a future
    maintainer sees a cell time out, bump quota and document here.
 
    Prerequisite: this file is only built when cairos's :with-test deps are

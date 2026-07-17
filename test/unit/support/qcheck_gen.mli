@@ -3,9 +3,9 @@
 
     Lives under [test/unit/support/] and is consumed by the per-module
     [test_*_props.ml] files in [test/unit/cairos/] and
-    [test/unit/cairos_finance/]. Per RFC 0030 §R4, [failwith] is used inside
-    generators on unreachable paths so the QCheck shrinker reports the right
-    counter-example; [Alcotest.fail] would corrupt shrinker output. *)
+    [test/unit/cairos_finance/]. [failwith] is used inside generators on
+    unreachable paths so the QCheck shrinker reports the right counter-example;
+    [Alcotest.fail] would corrupt shrinker output. *)
 
 (** {1 Constants} *)
 
@@ -14,15 +14,15 @@ val epoch_2024_01_01_utc : float
     every synthetic index extends from. *)
 
 val default_seed : int
-(** [0xC41A05]. The CI default seed (FR-4); [pin_seed_from_env] uses this when
+(** [0xC41A05]. The CI default seed; [pin_seed_from_env] uses this when
     [QCHECK_SEED] is unset. *)
 
 (** {1 Index/series factories — total, generator-safe}
 
     Each factory builds a series from a known-valid epoch + length-matched
     [Nx.t], so the internal [Index.of_unix_floats] and [Series.make] calls
-    cannot fail by construction. Unreachable [failwith] sites are commented per
-    RFC 0030 §R4. *)
+    cannot fail by construction. Unreachable [failwith] sites are commented at
+    their definitions. *)
 
 val make_series_from_floats :
   freq:'freq Cairos.Freq.t ->
@@ -31,8 +31,7 @@ val make_series_from_floats :
 (** [make_series_from_floats ~freq xs] builds a synthetic series at frequency
     [freq] starting at {!epoch_2024_01_01_utc}. Bucket interval is selected by
     locally-abstract [type freq] match on the [Freq.t] GADT (Minute=60s,
-    Hour=3600s, Daily=86400s, Weekly=604800s) per
-    [~/.claude/solutions/ocaml/gadt-exhaustiveness-locally-abstract-type.md]. *)
+    Hour=3600s, Daily=86400s, Weekly=604800s). *)
 
 (** {1 Single-series arbitraries} *)
 
@@ -40,8 +39,8 @@ val daily_float_series_arb :
   ([ `Daily ], (float, Bigarray.float64_elt) Nx.t) Cairos.Series.t
   QCheck.arbitrary
 (** Random length [1..64], values from [QCheck.float] (full IEEE 754 incl.
-    NaN/inf — verified bit-transparent through Nx by RFC 0030 §R3 amendment).
-    Shrinker truncates to length 1 / n/2 / n-1. *)
+    NaN/inf — verified bit-transparent through Nx). Shrinker truncates to length
+    1 / n/2 / n-1. *)
 
 val daily_finite_float_series_arb :
   ([ `Daily ], (float, Bigarray.float64_elt) Nx.t) Cairos.Series.t
@@ -63,13 +62,13 @@ val daily_non_negative_series_arb :
   QCheck.arbitrary
 (** Values in [0.0, 1e6]. Used by Window's expanding-monotone-reducer property
     and as a baseline for non-negativity-dependent invariants. Lifted verbatim
-    from PRD 0033's [test_series_scan.ml] inline definition. *)
+    from [test_series_scan.ml]'s inline definition. *)
 
 val daily_strict_positive_series_arb :
   ([ `Daily ], (float, Bigarray.float64_elt) Nx.t) Cairos.Series.t
   QCheck.arbitrary
-(** Values in [1e-6, 1e6]. Lifted verbatim from PRD 0033. Used where strict
-    positivity is required (e.g. constructing wealth series for drawdown). *)
+(** Values in [1e-6, 1e6]. Used where strict positivity is required (e.g.
+    constructing wealth series for drawdown). *)
 
 val minute_finite_float_series_arb :
   ([ `Minute ], (float, Bigarray.float64_elt) Nx.t) Cairos.Series.t
@@ -118,8 +117,7 @@ val paired_overlapping_daily_arb :
     derived from {!epoch_2024_01_01_utc}. Internal [Frame.of_series] failures on
     duplicate names or index mismatch are unreachable by construction (each
     column is built from {!make_series_from_floats} at the same length, with
-    distinct programmatic names [c0..c{C-1}]) and terminate with [failwith] per
-    [~/.claude/solutions/ocaml/qcheck-generator-failwith.md]. *)
+    distinct programmatic names [c0..c{C-1}]) and terminate with [failwith]. *)
 
 val daily_frame_distinct_floats_arb : [ `Daily ] Cairos.Frame.t QCheck.arbitrary
 (** Daily frame with [1..20] rows and [1..10] columns of finite, row-wise
@@ -139,8 +137,8 @@ val daily_frame_finite_floats_with_nan_arb :
 val daily_frame_zscore_well_conditioned_arb :
   [ `Daily ] Cairos.Frame.t QCheck.arbitrary
 (** Daily frame with [1..20] rows and [2..10] columns. Every row contains at
-    least two distinct non-NaN cells, guaranteeing non-zero sample variance (RFC
-    0050 §R1 well-conditioned constraint at the [zscore] mean/std invariants).
+    least two distinct non-NaN cells, guaranteeing non-zero sample variance (the
+    well-conditioned constraint at the [zscore] mean/std invariants).
     Distinctness is enforced by drawing two anchor values per row, bumping the
     second by [Float.succ] if it collides, then placing them at two random
     column positions; remaining cells may be NaN or any finite value in
@@ -159,17 +157,16 @@ val shrink_daily_series :
 (** {1 Comparators} *)
 
 val float_approx_equal : tol:float -> float -> float -> bool
-(** Three-branch NaN-aware tolerance comparator per
-    [~/.claude/solutions/general/nan-aware-tolerance-comparator.md]: branch on
-    [Float.is_nan] for both operands first (both-NaN ⇒ equal, one-NaN ⇒
-    unequal), then short-circuit on exact equality so same-sign infinities
-    compare equal, then check [|a-b| <= tol *. max 1.0 (max |a| |b|)]. Lifted
-    verbatim from [test_series_scan.ml]; both NaN branches and the infinity
-    branches are pinned by the existing comparator unit tests in that file. *)
+(** Three-branch NaN-aware tolerance comparator: branch on [Float.is_nan] for
+    both operands first (both-NaN ⇒ equal, one-NaN ⇒ unequal), then
+    short-circuit on exact equality so same-sign infinities compare equal, then
+    check [|a-b| <= tol *. max 1.0 (max |a| |b|)]. Lifted verbatim from
+    [test_series_scan.ml]; both NaN branches and the infinity branches are
+    pinned by the existing comparator unit tests in that file. *)
 
 val float_arrays_bitwise_equal : float array -> float array -> bool
 (** Same length and [Int64.bits_of_float]-equal at every position. Used for
-    exact-bit equality where two code paths must agree (e.g. PRD 0033's
+    exact-bit equality where two code paths must agree (e.g.
     [scan (+.) 0.0 = cumsum]). Lifted verbatim from [test_series_scan.ml]. *)
 
 (** {1 Determinism} *)

@@ -1,13 +1,13 @@
 (* Property suite for [Cairos.Series] (excluding scan/dropna which have their
-   own files) and [Series.ffill]. RFC 0046 TP-Series-1..5.
+   own files) and [Series.ffill].
 
-   Each property runs at [~count:200] per RFC 0046 Test Plan; CI/local
-   reproducibility is provided by [Qcheck_gen.pin_seed_from_env] (FR-4). *)
+   Each property runs at [~count:200]; CI/local
+   reproducibility is provided by [Qcheck_gen.pin_seed_from_env]. *)
 
-(* TP-Series-1 — [Series.map] with the Nx-tensor identity preserves the values
+(* [Series.map] with the Nx-tensor identity preserves the values
    array bitwise. The closure is [(fun t -> t)] at the Nx level (not a float
    identity) per series.mli:54: [Series.map] operates on the values payload as
-   a whole. See ~/.claude/solutions/ocaml/cairos-series-map-is-tensor-level.md.
+   a whole.
    Catches a regression that allocates a non-identical tensor on the identity
    path (e.g. drops NaN bit patterns under spurious arithmetic). *)
 let map_identity_is_identity =
@@ -18,7 +18,7 @@ let map_identity_is_identity =
         (Nx.to_array (Cairos.Series.values mapped))
         (Nx.to_array (Cairos.Series.values s)))
 
-(* TP-Series-2 — [Series.map] preserves length. Distinct from TP-Series-1
+(* [Series.map] preserves length. Distinct from the bitwise-identity property
    because length is read from the index, not the values tensor. Catches a
    regression that decouples the index from a mapped output (e.g. swapping in
    a mismatched index by accident). *)
@@ -28,20 +28,17 @@ let map_preserves_length =
       let mapped = Cairos.Series.map (fun t -> t) s in
       Cairos.Series.length mapped = Cairos.Series.length s)
 
-(* TP-Series-3 — [shift n (shift -n s)] preserves the trailing window starting
+(* [shift n (shift -n s)] preserves the trailing window starting
    at position [n]: positions [0, n) become NaN by construction (vacated
    leading positions per series.mli:64-68), and positions [n, length) recover
    the original values [old.(n), ..., old.(length - 1)] bitwise. Skipped at
    [n = 0] (trivial identity).
 
-   The RFC §Test Plan code listing for TP-Series-3 has a typo: the right-side
-   slice index is [0; length-n], which would be the *leading* window of the
-   original. With [shift n (shift -n s)] the round-trip preserves the
+   With [shift n (shift -n s)] the round-trip preserves the
    *trailing* window, not the leading one (verified by tracing the in-library
-   implementation at lib/series.ml:33-47). The task plan note ("trailing
-   window of length length - n to avoid the boundary NaNs shift introduces")
-   describes the trailing-window form; this implementation honours the task
-   plan and slices [R (n, length)] on both sides. *)
+   implementation at lib/series.ml:33-47): the trailing
+   window has length length - n, avoiding the boundary NaNs shift introduces.
+   This implementation slices [R (n, length)] on both sides. *)
 let series_with_shift_arb =
   let open QCheck in
   let gen =
@@ -71,7 +68,7 @@ let shift_round_trip_overlap_is_identity =
       in
       Qcheck_gen.float_arrays_bitwise_equal lhs rhs)
 
-(* TP-Series-4 — [Series.slice]'s clamped-length contract. For arbitrary
+(* [Series.slice]'s clamped-length contract. For arbitrary
    [start] and [stop] drawn from [[-len/2, 3 * len/2]] (a length-aware range
    that scales the bounds with the series's own length), the output length
    equals [max 0 (min stop len - max start 0)].
@@ -114,7 +111,7 @@ let slice_clamped_length_formula =
       let expected = max 0 (min stop len - max start 0) in
       Cairos.Series.length result = expected)
 
-(* TP-Series-5 — after [Series.ffill], every position at or after the first
+(* After [Series.ffill], every position at or after the first
    non-NaN index of the input is non-NaN in the output. Empty input or
    all-NaN input returns [None] from [first_valid] and the property holds
    vacuously. Length is unchanged. Catches a regression where ffill drops or
