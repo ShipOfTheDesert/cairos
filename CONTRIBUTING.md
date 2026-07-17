@@ -172,6 +172,15 @@ independently — by hand or against a trusted Python/Pandas reference — and
 encoded as regression tests. Do not derive expected values from the
 implementation being tested.
 
+**Oracle independence.** A reference implementation is only an oracle if it
+is derived from the specification, not the code. Any cross-validation
+reference (engine, WFO folds, future metrics without a library primitive)
+is authored from the RFC alone — the implementation must not be in the
+author's context. Record provenance alongside the reference (what was read,
+what was not). A reference written by reading the implementation proves only
+that the code equals its own port; it cannot catch modeling errors, and this
+failure mode shipped a real defect (see docs/ANALYSIS.md §6, 2026-07-16).
+
 ### IV. Make Invalid States Unrepresentable
 
 The type system is the primary correctness mechanism. Prefer designs where

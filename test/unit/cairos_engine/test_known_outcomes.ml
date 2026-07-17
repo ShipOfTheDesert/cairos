@@ -83,11 +83,17 @@ let check_float_array_close ~tol ~msg expected actual =
      - [t=0]: not a rebalance. Mark-to-market with zero weights leaves
        NAV unchanged. [equity.(0) = 1.0].
      - [t=1] (rebalance, T=1): execution at [T+1 = 2], so
-       [execution_price = price.(2) = 1.0201]. [weight_delta = 1.0 - 0 = 1.0].
-       [cost = (commission +. slippage) *. 1.0 *. 1.0201]. NAV-update
-       ordering (OC-3): deduct cost first, then apply new weights.
-         [nav_before_1 = nav_0 * MTM_ratio (zero weights) = 1.0]
-         [equity.(1) = nav_after = 1.0 -. cost]
+       [execution_price = price.(2) = 1.0201] (this sets the trade's
+       entry_price; it no longer enters the cost). MTM with zero weights
+       leaves the pre-cost NAV at [nav_after_mtm = 1.0].
+       [weight_delta = 1.0 - 0 = 1.0]. Cost is charged on turnover as a
+       fraction of pre-cost NAV (feature 0058 / RFC 0052 Amendment A1),
+       not on the price level:
+       [cost = (commission +. slippage) *. |weight_delta| *. nav_after_mtm
+             = 0.0015 *. 1.0 *. 1.0 = 0.0015].
+       NAV-update ordering (OC-3, unchanged): deduct cost first, then
+       apply new weights.
+         [equity.(1) = nav_after_mtm -. cost = 1.0 -. 0.0015 = 0.9985]
          current_weights := 1.0
      - [t in {2,3,4}]: not rebalances. MTM with weight = 1.0:
          [equity.(i) = equity.(i-1) *. (price.(i) /. price.(i-1))]
@@ -122,7 +128,12 @@ let always_long_equity_curve_matches_compounded_return () =
   let rebalance_index = make_daily_index [| "2024-01-02" |] in
   let commission = 0.001 in
   let slippage = 0.0005 in
-  let cost = (commission +. slippage) *. 1.0 *. prices.(2) in
+  (* Pre-cost NAV at the t=1 rebalance is [1.0]: zero weights through [t=0]
+     make the MTM step a no-op. Cost is turnover as a fraction of that NAV
+     ([(c+s) *. |dw| *. nav]), so [cost = 0.0015 *. 1.0 *. 1.0 = 0.0015],
+     independent of [price.(2)]. *)
+  let nav_at_rebalance = 1.0 in
+  let cost = (commission +. slippage) *. 1.0 *. nav_at_rebalance in
   let expected_equity =
     Array.init 5 (fun i ->
         if i = 0 then 1.0 else (1.0 -. cost) *. (1.01 ** float_of_int (i - 1)))
@@ -188,7 +199,8 @@ let always_long_equity_curve_matches_compounded_return () =
    Sign-flip cost split (PRD 0053 FR-9):
      At a sign-flip rebalance with [w_old = +1.0, w_new = -1.0],
      [|weight_delta| = 2.0 = |w_old| + |w_new|]. The full per-rebalance
-     cost [(c+s) *. 2.0 *. p_exec] is paid once. PRD 0053 FR-9 attributes
+     cost [(c+s) *. 2.0 *. nav] (nav = pre-cost NAV at that bar) is paid
+     once. PRD 0053 FR-9 attributes
      "all costs paid at i_0, ..., i_K and i_R" to the resolving trade.
      For the incepting trade at the same rebalance, the cost at i_0
      (its inception) is the same rebalance cost. PRD 0053 leaves the
@@ -204,25 +216,30 @@ let always_long_equity_curve_matches_compounded_return () =
      targets      = [+1.0 at t=1; -1.0 at t=2]
 
      - [t=0]: not rebalance. equity.(0) = 1.0.
-     - [t=1]: rebalance T=1. execution_price = price.(2) = 1.0.
-         cost1 = c * 1.0 * 1.0 = 0.0015. nav_before_1 = 1.0 (zero weights).
+     - [t=1]: rebalance T=1. nav_before_1 = 1.0 (zero weights, no MTM).
+         cost1 = c * |dw| * nav_before_1 = 0.0015 * 1.0 * 1.0 = 0.0015.
          equity.(1) = 1.0 - 0.0015 = 0.9985. weights := +1.0.
+         (execution_price = price.(2) = 1.0 sets the trade's entry_price;
+         it no longer enters the cost — here nav and price coincide at 1.0.)
          Trade 1 inception: entry_timestamp = price_index.(2) = 2024-01-03,
          entry_price = price.(2) = 1.0.
      - [t=2]: rebalance T=2. weight_delta = -2.0.
-         execution_price = price.(3) = 1.1. cost2 = c * 2.0 * 1.1 = 0.0033.
          nav_before_2 = equity.(1) * (1 + 1.0 * (price.(2)/price.(1) - 1))
                       = 0.9985 * (1 + 0) = 0.9985.
-         equity.(2) = 0.9985 - 0.0033 = 0.9952. weights := -1.0.
+         cost2 = c * |dw| * nav_before_2 = 0.0015 * 2.0 * 0.9985
+               = 0.0029955.
+         equity.(2) = 0.9985 - 0.0029955 = 0.9955045. weights := -1.0.
+         (execution_price = price.(3) = 1.1 sets the trades' entry/exit
+         prices; it no longer enters the cost.)
          Sign flip: trade 1 resolved at t=3 (T+1 of T=2),
          trade 2 incepted at t=3 (T+1 of T=2).
      - [t=3]: not rebalance. weight = -1.0. price.(3)/price.(2) = 1.1/1.0.
-         equity.(3) = 0.9952 * (1 + (-1.0) * (1.1 - 1.0))
-                    = 0.9952 * 0.9 = 0.89568.
+         equity.(3) = 0.9955045 * (1 + (-1.0) * (1.1 - 1.0))
+                    = 0.9955045 * 0.9 = 0.89595405.
      - [t=4]: not rebalance. weight = -1.0. price.(4)/price.(3) = 1.0/1.1.
-         equity.(4) = 0.89568 * (1 + (-1.0) * (1.0/1.1 - 1.0))
-                    = 0.89568 * (2.0 - 1.0/1.1)
-                    = 0.89568 * 12.0/11.0.
+         equity.(4) = 0.89595405 * (1 + (-1.0) * (1.0/1.1 - 1.0))
+                    = 0.89595405 * (2.0 - 1.0/1.1)
+                    = 0.89595405 * 12.0/11.0.
 
    Trade records:
      Trade 1 (long):
@@ -241,7 +258,7 @@ let always_long_equity_curve_matches_compounded_return () =
          segment ratio = price.(2) / price.(1) = 1.0/1.0 = 1.0.
          segment pnl   = 1.0 * 1.0 * (1.0 - 1.0) = 0.0.
          pnl_1 = 0.0 - cost1 - 0.5 * cost2
-               = -0.0015 - 0.00165 = -0.00315.
+               = -0.0015 - 0.00149775 = -0.00299775.
        Trade 2 has rebalance-bar segment [i_0=2, i_R=4) (force-close
        uses the last bar's index for i_R per FR-10):
          segment ratio = price.(4) / price.(2) = 1.0/1.0 = 1.0.
@@ -278,9 +295,17 @@ let alternating_long_short_pnl_matches_analytical () =
   let commission = 0.001 in
   let slippage = 0.0005 in
   let c = commission +. slippage in
-  let cost1 = c *. 1.0 *. prices.(2) in
-  let cost2 = c *. 2.0 *. prices.(3) in
+  (* Pre-cost NAV at the t=1 rebalance = 1.0 (zero weights through t=0 make
+     the MTM step a no-op). *)
+  let nav_reb1 = 1.0 in
+  let cost1 = c *. 1.0 *. nav_reb1 in
   let equity_1 = 1.0 -. cost1 in
+  (* Pre-cost NAV at the t=2 rebalance = equity_1: the MTM ratio
+     price.(2)/price.(1) = 1.0/1.0 = 1.0, so NAV does not drift between the
+     two rebalances. The sign-flip turnover |dw| = 2.0 is costed against
+     this NAV, not against price.(3). *)
+  let nav_reb2 = equity_1 in
+  let cost2 = c *. 2.0 *. nav_reb2 in
   let equity_2 = equity_1 -. cost2 in
   let equity_3 =
     equity_2 *. (1.0 +. (-1.0 *. ((prices.(3) /. prices.(2)) -. 1.0)))
@@ -370,18 +395,21 @@ let alternating_long_short_pnl_matches_analytical () =
 
    Derivation:
      - [t=0]: not rebalance. equity.(0) = 1.0.
-     - [t=1]: rebalance T=1. execution_price = price.(2) = 102.0.
-         cost = 0.0015 * 1.0 * 102.0 = 0.153. equity.(1) = 1.0 - 0.153 = 0.847.
-         (Cost is large because price.(2) = 102.0 is unscaled; this reflects
-         RFC 0052 OC-3's literal cost formula
-         [(c+s) *. |dw| *. execution_price]. The dimensional weirdness is
-         a known property of the pinned formula and is not what this test
-         exercises.)
-         weights := 1.0.
-     - [t=2]: not rebalance. equity.(2) = 0.847 * 102.0/100.0 = 0.847 * 1.02
-              = 0.86394.
-     - [t=3]: not rebalance. equity.(3) = 0.86394 * 104.04/102.0
-              = 0.86394 * 1.02 = 0.8812188.
+     - [t=1]: rebalance T=1. MTM with zero weights leaves the pre-cost NAV
+         at [nav_after_mtm = 1.0]. Cost is turnover as a fraction of pre-cost
+         NAV (feature 0058 / RFC 0052 Amendment A1), independent of the
+         price level: [cost = (c+s) *. |dw| *. nav_after_mtm
+         = 0.0015 *. 1.0 *. 1.0 = 0.0015].
+         equity.(1) = 1.0 - 0.0015 = 0.9985. weights := 1.0.
+         (Strong pin: the old price-notional formula charged
+         [(c+s) *. 1.0 *. 102.0 = 0.153], ~100x larger. Prices anchored at
+         100 make the two conventions differ by the price level, so this
+         test alone rules out any price-dimensioned cost — execution_price
+         = price.(2) = 102.0 now only sets the trade's entry_price.)
+     - [t=2]: not rebalance. equity.(2) = 0.9985 * 102.0/100.0
+              = 0.9985 * 1.02 = 1.018470.
+     - [t=3]: not rebalance. equity.(3) = 1.018470 * 104.04/102.0
+              = 1.018470 * 1.02 = 1.0388394.
 
    Trade record (force-close at [t=3] = last bar):
      - entry_timestamp = price_index.(2) = 2024-01-03 (T+1 of T=1).
@@ -400,7 +428,12 @@ let single_rebalance_known_cost_known_pnl () =
   let rebalance_index = make_daily_index [| "2024-01-02" |] in
   let commission = 0.001 in
   let slippage = 0.0005 in
-  let cost = (commission +. slippage) *. 1.0 *. prices.(2) in
+  (* Pre-cost NAV at the t=1 rebalance is [1.0]: zero weights through [t=0]
+     make the MTM step a no-op, so the cost is [(c+s) *. |dw| *. 1.0
+     = 0.0015] regardless of the price anchor at 100. Under the old
+     price-notional formula this was [0.0015 *. 1.0 *. 102.0 = 0.153]. *)
+  let nav_at_rebalance = 1.0 in
+  let cost = (commission +. slippage) *. 1.0 *. nav_at_rebalance in
   let equity_0 = 1.0 in
   let equity_1 = 1.0 -. cost in
   let equity_2 = equity_1 *. (prices.(2) /. prices.(1)) in

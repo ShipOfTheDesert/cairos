@@ -33,7 +33,21 @@
   (qcheck-alcotest :with-test)
   (bechamel :with-test)
   (bechamel-notty :with-test)
-  (yojson :with-test)))
+  (yojson :with-test)
+  ; Developer tooling for the fmt / doc / opam-lint gates (justfile). Not
+  ; runtime deps; pulled by `just deps` via --with-dev-setup so a fresh switch
+  ; has everything the `just` gate invokes. ocamlformat is pinned to the
+  ; .ocamlformat version to keep formatting reproducible.
+  (ocamlformat
+   (and
+    (= 0.28.1)
+    :with-dev-setup))
+  (odoc
+   (and
+    (>= 3.1.0)
+    :with-dev-setup))
+  (opam-dune-lint :with-dev-setup)
+  (ocaml-lsp-server :with-dev-setup)))
 
 (package
  (name cairos_finance)

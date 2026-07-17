@@ -63,9 +63,11 @@ module Backtest : sig
 
       [commission] and [slippage] are dimensionless fractions (e.g. [0.001] is
       10 basis points). Both are required: there is no default. Per RFC 0052
-      OC-3, the per-rebalance per-instrument cost is
-      [(commission +. slippage) *. abs(weight_delta) *. execution_price],
-      deducted from NAV before new weights are applied.
+      OC-3 as amended by A1, the per-rebalance per-instrument cost is
+      [(commission +. slippage) *. abs(weight_delta) *. nav], where [nav] is the
+      pre-cost NAV at the rebalance bar (post-MTM, pre-deduction). Cost is thus
+      a pure function of turnover as a fraction of NAV, independent of price
+      level; the total is deducted from NAV before new weights are applied.
 
       [rebalance_index]'s frequency is independent of [price_frame]'s frequency;
       entrypoint validation per RFC 0052 enforces calendar alignment.

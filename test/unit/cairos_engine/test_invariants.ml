@@ -42,8 +42,9 @@
        the per-bar MTM factor [1 + sum w_j * (r_j - 1)] safely above
        zero for n_cols <= 3.
      - commission, slippage in [0.0, 0.001]. The cost formula is
-       [(c+s) * |dw| * exec_price]; tight bounds keep cumulative cost
-       small enough that NAV stays positive over the loop.
+       [(c+s) * |dw| * nav] (pre-cost NAV; RFC 0052 A1); tight bounds
+       keep cumulative cost small enough that NAV stays positive over
+       the loop.
      - n_cols in [1, 3], n_bars in [4, 8]. Small enough that QCheck
        at ~count:200 finishes promptly. *)
 
@@ -257,16 +258,22 @@ let equity_curve_strictly_positive =
 
 (* TP-Engine-3 — RFC 0056 §Test Plan Layer 3 row 3.
 
-   For every recorded trade, [(commission +. slippage) *. |dw| *.
-   entry_price >= 0.0]. The generator restricts [commission >= 0.0] and
-   [slippage >= 0.0] and produces strictly positive prices, so the
-   cost expression is non-negative by construction. The invariant guards
-   against an accidental sign flip in the cost-deduction line: a
-   regression that negated [exec_price] would surface a negative
-   [entry_price] on the trade record. We check the cost expression
-   directly with a reconstructed [|dw|] derived from the trade's
-   sign-of-entry against the in-state-before, since [Trade.t] does not
-   surface [|dw|] as a field. *)
+   Transaction costs are non-negative. Under the turnover-notional
+   convention (RFC 0052 Amendment A1) the per-rebalance cost is
+   [(commission +. slippage) *. |dw| *. nav], non-negative because all
+   three factors are: [commission >= 0.0] and [slippage >= 0.0] by the
+   generator, [|dw| >= 0.0] by construction, and [nav > 0.0] by the
+   [equity_curve_strictly_positive] invariant above.
+
+   [Trade.t] surfaces neither [|dw|] nor the pre-cost NAV at the trade's
+   rebalance, so the exact cost cannot be reconstructed from a trade
+   record here. We assert the weak proxy [(commission +. slippage) *.
+   entry_price >= 0.0]: under A1 the cost dropped its price factor, so
+   this no longer exercises the cost path — it only pins that costs are
+   not trivially negative. The load-bearing guards are elsewhere: a cost
+   sign error is caught by [trade_pnl_sum_plus_one_equals_final_equity]
+   (pnl embeds [-. cost]), and price-scale invariance of the cost is
+   deferred to Feature CG-2. *)
 let transaction_costs_non_negative =
   QCheck.Test.make ~count:200 ~name:"transaction_costs_non_negative"
     engine_inputs_arb (fun ei ->

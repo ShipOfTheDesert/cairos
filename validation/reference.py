@@ -265,16 +265,29 @@ def frame_zscore(rows: list[list[float]], columns: list[str]) -> pd.DataFrame:
 # Encodes RFC 0052's seven-step rebalance loop, RFC 0052 OC-3 / OC-6
 # mark-to-market formula (extended to non-fully-invested portfolios per RFC
 # 0056 §Implementation Decisions Decision 1), the proportional sign-flip cost
-# split (RFC 0056 Decision 2), the additive cost formula
-# [(commission +. slippage) *. abs(weight_delta) *. execution_price], the
+# split (RFC 0056 Decision 2), the turnover-notional cost formula
+# [(commission +. slippage) *. abs(weight_delta) *. nav_after_mtm], the
 # NAV-update ordering (deduct cost from nav_after_mtm, then apply new weights),
 # and the end-of-backtest force-close at the last bar's close with no exit cost
 # per PRD 0053 FR-10.
 #
+# COST CONVENTION (RFC 0052 Amendment A1, ANALYSIS.md 2.1): cost is a fraction
+# of pre-cost NAV, never a function of the absolute price level. The pre-fix
+# formula multiplied by execution_price, which is dimensionally wrong; A1
+# superseded RFC 0052 OC-3's pinned formula. Both sides of the cross-validation
+# now use nav_after_mtm.
+#
+# PROVENANCE: this backtest reference is still a transliteration of the OCaml
+# engine, not an independent oracle — it shares the engine's derivation, so
+# Layer 2 checks transcription only. Feature CG-5 replaces it wholesale with a
+# vectorbt-based independent oracle; correctness of the cost fix rests on the
+# Layer 1 hand derivations in test_known_outcomes.ml, not on this file.
+#
 # Per ~/.claude/solutions/general/oracle-encodes-contract-not-library-default.md
-# this reference encodes RFC 0052's conventions, not Pandas defaults. There is
-# no Pandas backtest primitive whose default this could shadow; the conventions
-# above are a from-scratch reimplementation of the OCaml engine in NumPy.
+# this reference encodes RFC 0052's conventions (as amended by A1), not Pandas
+# defaults. There is no Pandas backtest primitive whose default this could
+# shadow; the conventions above are a from-scratch reimplementation of the
+# OCaml engine in NumPy.
 #
 # Trade column order pinned by RFC 0054 OC-5 — do not reorder without updating
 # lib/cairos_engine/cairos_engine.mli's Trade.t field declaration order.
@@ -313,16 +326,15 @@ def backtest_dates() -> pd.DatetimeIndex:
 
 
 def backtest_prices_df() -> pd.DataFrame:
-    # Normalised prices anchored at 1.0. RFC 0052 OC-3's cost formula
-    # [(commission +. slippage) *. abs(weight_delta) *. execution_price] is
-    # dimensional in execution_price; prices anchored at 100.0 drive
-    # per-rebalance cost into the 1%-of-NAV range, which compounds to NAV
-    # collapse over ~10 weekly rebalances under uniform[-0.5, 0.5] target
-    # weights. The Layer 1 tests anchor at 1.0 (Tests 1 / 2) precisely to
-    # avoid this; Test 3 anchors at 100.0 deliberately to exercise the
-    # dimensional cost line under a one-rebalance topology. The Layer 3
-    # invariant [equity_curve_strictly_positive] requires the anchor-at-1.0
-    # convention here.
+    # Normalised prices anchored at 1.0. Under the turnover-notional cost
+    # convention (RFC 0052 Amendment A1), cost is a fraction of pre-cost NAV
+    # and is independent of the absolute price level, so the anchor is now a
+    # plain normalisation choice, not a cost-collapse-avoidance measure: the
+    # pre-fix execution_price formula drove per-rebalance cost into the
+    # 1%-of-NAV range and compounded to NAV collapse only because it was
+    # dimensioned in price. The price fixture itself is unchanged by A1 (this
+    # generator is untouched); only the equity/returns/trade fixtures move,
+    # because the cost line downstream now multiplies by nav_after_mtm.
     rng = np.random.default_rng(BACKTEST_PRICE_SEED)
     n_inst = len(BACKTEST_INSTRUMENTS)
     log_returns = rng.normal(0.0, 0.01, size=(BACKTEST_N_BARS - 1, n_inst))
@@ -391,8 +403,12 @@ def backtest_reference(
                 target = float(signals[t, j])
                 w_old = current_weights[j]
                 dw = target - w_old
-                exec_price = float(prices[exec_bar, j])
-                cost = cs * abs(dw) * exec_price
+                # Cost is turnover (|dw|) as a fraction of pre-cost NAV
+                # (nav_after_mtm), not of the absolute price level. See RFC 0052
+                # Amendment A1 and ANALYSIS.md 2.1 — the price-dimensioned form
+                # was dimensionally wrong. exec_price is bound only in the
+                # second (trade-record) loop below, where it is a trade field.
+                cost = cs * abs(dw) * nav_after_mtm
                 dws[j] = dw
                 costs[j] = cost
                 total_cost += cost
