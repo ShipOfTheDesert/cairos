@@ -225,8 +225,9 @@ module Backtest = struct
           let target = signal_data.(j).(t) in
           let w_old = current_weights.(j) in
           let dw = target -. w_old in
-          let exec_price = price_data.(j).(exec_bar) in
-          let cost = cs *. Float.abs dw *. exec_price in
+          (* Cost is turnover (|Δw|) as a fraction of pre-cost NAV, not of
+             price level — RFC 0052 amendment A1. *)
+          let cost = cs *. Float.abs dw *. nav_after_mtm in
           dws.(j) <- dw;
           costs.(j) <- cost;
           total_cost := !total_cost +. cost
