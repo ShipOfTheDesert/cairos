@@ -19,8 +19,8 @@ module Backtest = struct
   }
 
   (* In-flight trade record. The instrument is identified by its column
-     index in the price frame; entry fields are immutable post-inception
-     (PRD 0053 FR-8); [pnl_acc] accumulates per-bar MTM contributions and
+     index in the price frame; entry fields are immutable post-inception;
+     [pnl_acc] accumulates per-bar MTM contributions and
      per-rebalance cost charges over the trade's lifetime. *)
   type in_flight = {
     entry_timestamp : Ptime.t;
@@ -72,8 +72,7 @@ module Backtest = struct
     in
     loop 0
 
-  (* Two-tier entrypoint validation per RFC 0056 OC-5 / RFC 0052
-     "Entrypoint validation order" steps 1–7:
+  (* Two-tier entrypoint validation, in order, steps 1–7:
 
      Tier 1 (shape, fail-fast):
        1. Price and signal frames have the same [Index.t].
@@ -87,7 +86,7 @@ module Backtest = struct
 
      Tier 3 (fail-fast):
        7. At least one (rebalance, instrument) target weight != 0.0
-          (PRD 0053 FR-11; structural justification for [Trade.t Nonempty.t]).
+          (structural justification for [Trade.t Nonempty.t]).
 
      On success, returns the [int array] mapping each rebalance row to its
      bar index in the price frame — pre-computed here to avoid timestamp
@@ -189,14 +188,13 @@ module Backtest = struct
     for t = 0 to n_bars - 1 do
       (* Mark-to-market step.
 
-         RFC 0052 OC-6 writes the formula as
-         [nav_t = nav_{t-1} *. sum_j (w_j *. p_t /. p_{t-1})], which is
+         The compounding formula
+         [nav_t = nav_{t-1} *. sum_j (w_j *. p_t /. p_{t-1})] is
          well-defined only when [sum_j w_j = 1.0]. The standard
          fractional-weight extension
          [nav_t = nav_{t-1} *. (1.0 +. sum_j (w_j *. (p_t /. p_{t-1} -. 1.0)))]
          is equivalent at full investment and produces realistic
-         loss-on-price-up for shorts (see RFC 0056 §Implementation Decisions
-         Decision 1). *)
+         loss-on-price-up for shorts. *)
       if t > 0 then begin
         let nav_pre = !current_nav in
         let total_ret = ref 0.0 in
@@ -216,7 +214,7 @@ module Backtest = struct
         current_nav := nav_pre *. (1.0 +. !total_ret)
       end;
 
-      (* Rebalance step (RFC 0052 OC-6 step 1–7). *)
+      (* Rebalance step. *)
       if is_rebalance.(t) then begin
         let exec_bar = t + 1 in
         let nav_after_mtm = !current_nav in
@@ -226,7 +224,7 @@ module Backtest = struct
           let w_old = current_weights.(j) in
           let dw = target -. w_old in
           (* Cost is turnover (|Δw|) as a fraction of pre-cost NAV, not of
-             price level — RFC 0052 amendment A1. *)
+             price level. *)
           let cost = cs *. Float.abs dw *. nav_after_mtm in
           dws.(j) <- dw;
           costs.(j) <- cost;
@@ -275,7 +273,7 @@ module Backtest = struct
               (w_old > 0.0 && target > 0.0) || (w_old < 0.0 && target < 0.0)
             then
               (* Same-direction size adjustment. The in-flight trade
-                 absorbs the full cost; entry fields stay fixed (FR-8). *)
+                 absorbs the full cost; entry fields stay fixed. *)
               match in_flight.(j) with
               | None -> assert false
               | Some ift -> ift.pnl_acc <- ift.pnl_acc -. cost_j
@@ -283,11 +281,10 @@ module Backtest = struct
               (* Sign flip — close the in-flight trade and incept a new
                  one at the same execution bar. The single per-instrument
                  cost is split proportionally to each side's contribution
-                 to [|weight_delta|] (RFC 0056 §Implementation Decisions
-                 Decision 2): for a sign flip [|weight_delta| = |w_old| +.
-                 |w_new|], so [closing_share / cost_j = |w_old| /. (|w_old|
-                 +. |w_new|)]. The total split sums to [cost_j], preserving
-                 the sum-of-pnl identity Layer 3 invariant 7 enforces. *)
+                 to [|weight_delta|]: for a sign flip [|weight_delta| =
+                 |w_old| +. |w_new|], so [closing_share / cost_j = |w_old|
+                 /. (|w_old| +. |w_new|)]. The total split sums to [cost_j],
+                 preserving the sum-of-pnl identity. *)
               let abs_old = Float.abs w_old in
               let abs_new = Float.abs target in
               let denom = abs_old +. abs_new in
@@ -330,8 +327,8 @@ module Backtest = struct
       done
     done;
 
-    (* End-of-backtest force-close per PRD 0053 FR-10: every still-open
-       trade resolves at the last bar's close with no exit cost. *)
+    (* End-of-backtest force-close: every still-open trade resolves at the
+       last bar's close with no exit cost. *)
     let last_bar = n_bars - 1 in
     let last_ts = price_ts.(last_bar) in
     for j = 0 to n_cols - 1 do
@@ -354,7 +351,7 @@ module Backtest = struct
 
     (* Output construction. The price frame's [Index.t] is shared
        physically across [equity_curve], [returns], and the [weights]
-       frame (RFC 0056 OC-4). *)
+       frame. *)
     let equity_nx = Nx.create Nx.float64 [| n_bars |] equity_buf in
     let equity_curve = Cairos.Series.make_unsafe price_idx equity_nx in
     let returns = Cairos.Series.pct_change equity_curve in
@@ -383,8 +380,7 @@ module Backtest = struct
               assert false)
     in
 
-    (* Trade-list non-emptiness construction (RFC 0052 §Implementation
-       Guidance). *)
+    (* Trade-list non-emptiness construction. *)
     let trades_list = List.rev !trade_acc in
     let trades =
       match Cairos.Nonempty.of_list trades_list with

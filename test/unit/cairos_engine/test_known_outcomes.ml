@@ -1,21 +1,20 @@
 (* Layer 1 — known-outcome strategy tests for [Cairos_engine.Backtest.run].
 
    Each test constructs price / signal / rebalance inputs for which the loop's
-   output can be derived analytically from RFC 0052 OC-3 / OC-6 first
-   principles plus PRD 0053 FR-7 / FR-9 / FR-10 trade accounting. Tolerance
-   is absolute [1e-10] per RFC 0056 §Test Plan Layer 1.
+   output can be derived analytically from first principles plus the
+   trade-accounting rules. Tolerance is absolute [1e-10].
 
-   At RFC 0056 Phase 2 step 6 these tests are RED (Task 1's stub returns
-   [Error "not implemented"]); RFC 0056 Phase 2 step 7 makes them GREEN. *)
+   These tests are RED until the loop is implemented (the stub returns
+   [Error "not implemented"]); implementing it makes them GREEN. *)
 
 (* === Test helpers ===
 
    These mirror [test/unit/cairos_finance/finance_test_helpers.ml] and
    [test/unit/cairos/test_helpers.ml]. We do not reach into [test_helpers]
-   from this directory — RFC 0056 §Module Breakdown does not declare a
-   helper library for [test/unit/cairos_engine/], and the helpers below are
+   from this directory — no helper library is declared for
+   [test/unit/cairos_engine/], and the helpers below are
    small enough that one-time inlining is cheaper than carrying a library
-   dependency in the cycle-check gate of Task 4. *)
+   dependency in the cycle-check gate. *)
 
 let make_daily_index dates =
   match Cairos.Index.daily dates with
@@ -62,24 +61,22 @@ let check_float_array_close ~tol ~msg expected actual =
 
 (* === Test 1: always_long_equity_curve_matches_compounded_return ===
 
-   RFC 0056 §Test Plan Layer 1 row 1.
-
    Setup: one instrument "A", five daily bars, price grows exactly 1% per
    bar starting at [1.0] (so [price.(i) = 1.01 ** i]). Single rebalance at
    [t=1] with [target_weight = 1.0]. End-of-backtest force-close at the
    last bar.
 
    Why first rebalance at [t=1] (not [t=0]):
-     RFC 0052 OC-6 pins the equity-curve value at a rebalance bar as
-     [nav_after_costs] (post-cost, pre-MTM). Per OC-11 the first
+     The equity-curve value at a rebalance bar is
+     [nav_after_costs] (post-cost, pre-MTM). The first
      equity-curve cell is [1.0] only when the price-frame's first bar is
      not a rebalance — otherwise it is [1.0 -. cost], and the Layer 3
-     [equity_curve_starts_at_one] invariant from RFC 0056 fails. We pin
+     [equity_curve_starts_at_one] invariant fails. We pin
      the first rebalance at [t=1] so [equity_curve.(0) = 1.0] holds
      structurally.
 
-   Derivation per RFC 0052 OC-3 / OC-6:
-     - Initial state (OC-11): [nav_0 = 1.0], all weights zero.
+   Derivation:
+     - Initial state: [nav_0 = 1.0], all weights zero.
      - [t=0]: not a rebalance. Mark-to-market with zero weights leaves
        NAV unchanged. [equity.(0) = 1.0].
      - [t=1] (rebalance, T=1): execution at [T+1 = 2], so
@@ -87,11 +84,11 @@ let check_float_array_close ~tol ~msg expected actual =
        entry_price; it no longer enters the cost). MTM with zero weights
        leaves the pre-cost NAV at [nav_after_mtm = 1.0].
        [weight_delta = 1.0 - 0 = 1.0]. Cost is charged on turnover as a
-       fraction of pre-cost NAV (feature 0058 / RFC 0052 Amendment A1),
+       fraction of pre-cost NAV,
        not on the price level:
        [cost = (commission +. slippage) *. |weight_delta| *. nav_after_mtm
              = 0.0015 *. 1.0 *. 1.0 = 0.0015].
-       NAV-update ordering (OC-3, unchanged): deduct cost first, then
+       NAV-update ordering (unchanged): deduct cost first, then
        apply new weights.
          [equity.(1) = nav_after_mtm -. cost = 1.0 -. 0.0015 = 0.9985]
          current_weights := 1.0
@@ -100,20 +97,19 @@ let check_float_array_close ~tol ~msg expected actual =
          [        = equity.(i-1) *. 1.01].
        Hence [equity.(i) = (1.0 -. cost) *. 1.01 ** (i - 1)] for [i >= 1].
 
-   Note (off-by-one vs RFC 0056 description): RFC 0056 §Test Plan Layer 1
-   row 1 writes the formula as [equity.(i) = (1 - cost) * 1.01 ** i] for
-   [i >= 1]. With [equity.(1) = 1 - cost] (no MTM applied at the rebalance
-   bar itself) the correct exponent is [i - 1], not [i]. We follow the
-   first-principles derivation above; the RFC description's exponent is a
-   wording-side off-by-one.
+   Note (off-by-one in the naive formula): writing the formula as
+   [equity.(i) = (1 - cost) * 1.01 ** i] for
+   [i >= 1] is off by one. With [equity.(1) = 1 - cost] (no MTM applied at
+   the rebalance bar itself) the correct exponent is [i - 1], not [i]. We
+   follow the first-principles derivation above.
 
    Trade record (force-close at [t=4]):
      - [entry_timestamp = price_index.(2)] (T+1 of T=1)
-     - [exit_timestamp  = price_index.(4)] (last bar, force-close per FR-10)
+     - [exit_timestamp  = price_index.(4)] (last bar, force-close)
      - [entry_price     = price.(2) = 1.0201]
-     - [exit_price      = price.(4) = 1.04060401] (last bar's close per FR-10)
+     - [exit_price      = price.(4) = 1.04060401] (last bar's close)
      - [holding_period_bars = 4 - 2 = 2]
-     - [pnl] derived from PRD 0053 FR-10's equity-trade identity for the
+     - [pnl] derived from the equity-trade identity for the
        single-trade case: [pnl + 1.0 = equity.(N-1)], so
        [pnl = equity.(4) -. 1.0]. *)
 
@@ -172,8 +168,6 @@ let always_long_equity_curve_matches_compounded_return () =
 
 (* === Test 2: alternating_long_short_pnl_matches_analytical ===
 
-   RFC 0056 §Test Plan Layer 1 row 2.
-
    Setup: one instrument "A", five daily bars. Two rebalances forming a
    sign flip (long → short). End-of-backtest force-close at the last bar.
 
@@ -182,32 +176,31 @@ let always_long_equity_curve_matches_compounded_return () =
    the held-position MTM segment uses prices [1.0, 1.0, 1.0, 1.1, 1.0].
 
    Convention used for shorts:
-     RFC 0052 OC-6 writes the MTM formula as
+     One MTM formula is
      [nav_t = nav_{t-1} *. sum_j (w_j *. p_t /. p_{t-1})]. Read literally
      this gives nonsensical (negative) NAV when [sum w_j < 0] (e.g.
      a single instrument with [w = -1]). The standard fractional-weight
      "weighted return" formula
      [nav_t = nav_{t-1} *. (1.0 +. sum_j (w_j *. (p_t /. p_{t-1} -. 1.0)))]
-     is equivalent to OC-6's wording when [sum_j w_j = 1.0]
+     is equivalent to that wording when [sum_j w_j = 1.0]
      (fully invested) and gives the realistic loss-on-price-up behaviour
      for shorts. This test assumes the engine implements the standard
-     formula. If Task 3's loop body matches OC-6's literal wording
+     formula. If the loop body matches the literal wording
      (sum-of-weights = 1 only), this test will surface the divergence
-     and the implementation choice is escalated per CLAUDE.md
-     §What Must Never Happen.
+     and the implementation choice is escalated.
 
-   Sign-flip cost split (PRD 0053 FR-9):
+   Sign-flip cost split:
      At a sign-flip rebalance with [w_old = +1.0, w_new = -1.0],
      [|weight_delta| = 2.0 = |w_old| + |w_new|]. The full per-rebalance
      cost [(c+s) *. 2.0 *. nav] (nav = pre-cost NAV at that bar) is paid
-     once. PRD 0053 FR-9 attributes
-     "all costs paid at i_0, ..., i_K and i_R" to the resolving trade.
+     once. The cost attribution assigns all costs paid at
+     i_0, ..., i_K and i_R to the resolving trade.
      For the incepting trade at the same rebalance, the cost at i_0
-     (its inception) is the same rebalance cost. PRD 0053 leaves the
+     (its inception) is the same rebalance cost. The rule leaves the
      allocation between the two trades implicit. We split the cost
      proportionally to each side's contribution to [|weight_delta|]:
      half attributed to the closing trade, half to the opening trade
-     (since [|w_old| = |w_new| = 1.0] here). If Task 3 uses a different
+     (since [|w_old| = |w_new| = 1.0] here). If the engine uses a different
      allocation, the test surfaces the divergence and we escalate.
 
    Derivation (commission = 0.001, slippage = 0.0005, c = c+s = 0.0015):
@@ -249,35 +242,35 @@ let always_long_equity_curve_matches_compounded_return () =
        holding_period_bars = 3 - 2 = 1.
      Trade 2 (short, force-closed):
        entry_timestamp = 2024-01-04 (T+1 of T=2).
-       exit_timestamp  = 2024-01-05 (last bar; FR-10).
+       exit_timestamp  = 2024-01-05 (last bar).
        entry_price = 1.1; exit_price = price.(4) = 1.0.
        holding_period_bars = 4 - 3 = 1.
 
-     Per-trade pnl (FR-9 with half-allocation of sign-flip cost):
+     Per-trade pnl (half-allocation of sign-flip cost):
        Trade 1 has rebalance-bar segment [i_0=1, i_R=2):
          segment ratio = price.(2) / price.(1) = 1.0/1.0 = 1.0.
          segment pnl   = 1.0 * 1.0 * (1.0 - 1.0) = 0.0.
          pnl_1 = 0.0 - cost1 - 0.5 * cost2
                = -0.0015 - 0.00149775 = -0.00299775.
        Trade 2 has rebalance-bar segment [i_0=2, i_R=4) (force-close
-       uses the last bar's index for i_R per FR-10):
+       uses the last bar's index for i_R):
          segment ratio = price.(4) / price.(2) = 1.0/1.0 = 1.0.
          segment pnl   = (-1.0) * (equity.(2)) * (1.0 - 1.0) = 0.0.
 
        Hmm — segment ratio of 1.0 on the rebalance bars makes the
-       FR-9 segment contribution zero for both trades, but the
+       segment contribution zero for both trades, but the
        equity curve clearly captures a non-zero P&L from holding
        the short through the [1.0 → 1.1 → 1.0] round trip. The
-       price-bar / rebalance-bar mismatch in FR-9 (price_{i_R} is
+       price-bar / rebalance-bar mismatch (price_{i_R} is
        the resolution rebalance bar's price, not the resolution
        execution bar's price) means the full P&L of the round trip
-       does not appear in the FR-9 segment formula here — it
+       does not appear in the segment formula here — it
        appears via the MTM accumulation between the rebalance
        bars and the price-frame's last bar.
 
        We assert only the equity curve and the trade fields
        (timestamps, prices, holding_period_bars) for this test.
-       The per-trade [pnl] is a downstream concern of FR-9 that
+       The per-trade [pnl] is a downstream concern that
        Task 3 must reconcile against the equity-trade identity
        [sum(pnl) +. 1.0 = equity.(N-1)]; that identity is checked
        in Test 1 (single-trade) and as a Layer 3 invariant
@@ -325,7 +318,7 @@ let alternating_long_short_pnl_matches_analytical () =
       in
       check_float_array_close ~tol:1e-10 ~msg:"equity_curve" expected_equity
         equity_actual;
-      (* Sum-of-pnl identity per FR-10. *)
+      (* Sum-of-pnl identity. *)
       let pnl_sum =
         List.fold_left
           (fun acc (t : Cairos_engine.Trade.t) -> acc +. t.pnl)
@@ -376,12 +369,10 @@ let alternating_long_short_pnl_matches_analytical () =
 
 (* === Test 3: single_rebalance_known_cost_known_pnl ===
 
-   RFC 0056 §Test Plan Layer 1 row 3.
-
    Focuses on the trade-record fields under the simplest possible
    topology: one instrument, one rebalance, one force-close at the last
-   bar. Every field is computed analytically from RFC 0052 OC-3 / OC-6
-   and PRD 0053 FR-7..FR-10.
+   bar. Every field is computed analytically from first principles
+   and the trade-accounting rules.
 
    Setup:
      dates       = [2024-01-01; 2024-01-02; 2024-01-03; 2024-01-04]
@@ -397,7 +388,7 @@ let alternating_long_short_pnl_matches_analytical () =
      - [t=0]: not rebalance. equity.(0) = 1.0.
      - [t=1]: rebalance T=1. MTM with zero weights leaves the pre-cost NAV
          at [nav_after_mtm = 1.0]. Cost is turnover as a fraction of pre-cost
-         NAV (feature 0058 / RFC 0052 Amendment A1), independent of the
+         NAV, independent of the
          price level: [cost = (c+s) *. |dw| *. nav_after_mtm
          = 0.0015 *. 1.0 *. 1.0 = 0.0015].
          equity.(1) = 1.0 - 0.0015 = 0.9985. weights := 1.0.
@@ -413,11 +404,11 @@ let alternating_long_short_pnl_matches_analytical () =
 
    Trade record (force-close at [t=3] = last bar):
      - entry_timestamp = price_index.(2) = 2024-01-03 (T+1 of T=1).
-     - exit_timestamp  = price_index.(3) = 2024-01-04 (last bar, FR-10).
+     - exit_timestamp  = price_index.(3) = 2024-01-04 (last bar).
      - entry_price     = price.(2) = 102.0.
-     - exit_price      = price.(3) = 104.04 (last bar's close; FR-10).
+     - exit_price      = price.(3) = 104.04 (last bar's close).
      - holding_period_bars = 3 - 2 = 1.
-     - pnl = equity.(3) - 1.0 (single-trade equity-trade identity, FR-10). *)
+     - pnl = equity.(3) - 1.0 (single-trade equity-trade identity). *)
 
 let single_rebalance_known_cost_known_pnl () =
   let dates = [| "2024-01-01"; "2024-01-02"; "2024-01-03"; "2024-01-04" |] in

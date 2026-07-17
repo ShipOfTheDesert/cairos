@@ -152,7 +152,7 @@ let describe frame =
    per-column values are gathered into a single [float array scratch] of
    length [n_cols], allocated once outside the row loop and reused per row.
    The shared scratch buffer is private to the function call (no aliasing of
-   input cells) per RFC 0050 §B.
+   input cells).
 
    Output frames are built via the concrete record literal
    [{ index = frame.index; columns = new_columns }] from inside this module
@@ -171,7 +171,7 @@ let gather_row frame i scratch =
     frame.columns
 
 let column_map ~f frame =
-  (* Imperative row loop per RFC 0050 §B — see header above. *)
+  (* Imperative row loop — see header above. *)
   let n_cols = List.length frame.columns in
   let n_rows = Index.length frame.index in
   let scratch = Array.make n_cols 0.0 in
@@ -184,7 +184,7 @@ let column_map ~f frame =
   Series.make_unsafe frame.index values
 
 let rank frame =
-  (* Imperative row loop per RFC 0050 §B / §R4 — see header above. *)
+  (* Imperative row loop — see header above. *)
   let n_cols = List.length frame.columns in
   let n_rows = Index.length frame.index in
   let scratch = Array.make n_cols 0.0 in
@@ -209,8 +209,7 @@ let rank frame =
     let n = !non_nan_count in
     (* Stable sort the non-NaN prefix ascending by value. Stability isn't
        required for correctness — equal-valued cells collapse into a
-       single run that all receive the same average rank — but matches
-       RFC Step 4c verbatim. *)
+       single run that all receive the same average rank. *)
     let prefix = Array.sub tie_buf 0 n in
     Array.stable_sort (fun (_, a) (_, b) -> Float.compare a b) prefix;
     let p = ref 0 in
@@ -234,7 +233,7 @@ let rank frame =
   { index = frame.index; columns = new_columns }
 
 let zscore frame =
-  (* Two-pass kernel per RFC 0050 §C; imperative per §B. *)
+  (* Two-pass kernel; imperative row loop. *)
   let n_cols = List.length frame.columns in
   let n_rows = Index.length frame.index in
   let scratch = Array.make n_cols 0.0 in
@@ -263,7 +262,7 @@ let zscore frame =
         let v = scratch.(j) in
         if not (Float.is_nan v) then ss := !ss +. ((v -. mean) *. (v -. mean))
       done;
-      (* ddof=1 per PRD Decision 2; matches Cairos_finance.annualised_vol. *)
+      (* ddof=1; matches Cairos_finance.annualised_vol. *)
       let std = Float.sqrt (!ss /. Float.of_int (!n - 1)) in
       if not (Float.equal std 0.0) then
         for j = 0 to n_cols - 1 do

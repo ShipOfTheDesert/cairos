@@ -135,8 +135,7 @@ let collect ~timestamp_col ~price_col rows =
   | Ok () -> Ok (timestamps, prices)
 
 (* Locally abstract type refines the index result constructor-by-constructor.
-   See ~/.claude/solutions/ocaml/gadt-exhaustiveness-locally-abstract-type.md
-   — the (type freq) annotation lives on this private helper so the public
+   The (type freq) annotation lives on this private helper so the public
    [of_csv_with] keeps a plain ['freq] signature. *)
 let dispatch_index (type freq) (f : freq Cairos.Freq.t) (ts : string array) :
     (freq Cairos.Index.t, Cairos.Index.err) result =
@@ -195,7 +194,7 @@ let of_csv ~freq path =
 
 (* Instrument columns for a wide-format frame file, in source-file order. For
    [~header:false] the name is positional [col_1], [col_2], ... where the
-   index is a 1-based count among non-timestamp columns (FR-8). *)
+   index is a 1-based count among non-timestamp columns. *)
 let collect_frame_columns ~header ~timestamp_col reference_fields =
   let n = Array.length reference_fields in
   List.init n Fun.id
@@ -217,7 +216,7 @@ let collect_frame_columns ~header ~timestamp_col reference_fields =
    Frame.of_series (lib/frame.ml:18-24) also rejects duplicate column names,
    but its message anchors to the name only. We check earlier so the error
    reports both source-file column positions and uses the "duplicate header"
-   vocabulary the RFC fixes in Step 5. *)
+   vocabulary. *)
 let find_duplicate_header columns =
   let rec check = function
     | []
@@ -231,10 +230,10 @@ let find_duplicate_header columns =
   check columns
 
 (* Per-row collection for the frame path. A missing cell — short row OR
-   empty string between commas — is treated as [Float.nan] per RFC Step 4
-   and PRD FR-7. A present cell that fails [Float.of_string_opt] is an
+   empty string between commas — is treated as [Float.nan]. A present cell
+   that fails [Float.of_string_opt] is an
    [Unparseable_float_in_cell] error. No [Float.is_finite] check here: [inf]
-   is accepted on the frame path (PRD Decision 3). *)
+   is accepted on the frame path. *)
 let frame_collect ~timestamp_col ~instrument_cols rows =
   let n = List.length rows in
   let ncols = List.length instrument_cols in

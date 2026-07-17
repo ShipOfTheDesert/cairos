@@ -1,10 +1,10 @@
 (* Property suite for [Cairos.Nonempty]. Lifted from [test_nonempty.ml] so the
-   QCheck cases follow the [test_<module>_props.ml] convention established by
-   RFC 0046; the deterministic Alcotest case stays in [test_nonempty.ml].
+   QCheck cases follow the [test_<module>_props.ml] convention;
+   the deterministic Alcotest case stays in [test_nonempty.ml].
 
    Properties run at [~count:200] (one at [~count:50]) per the original
    [test_nonempty.ml] spelling; CI/local reproducibility comes from
-   [Qcheck_gen.pin_seed_from_env] (FR-4). *)
+   [Qcheck_gen.pin_seed_from_env]. *)
 
 open Cairos
 

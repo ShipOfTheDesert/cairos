@@ -70,7 +70,7 @@ val describe : 'freq t -> (string * column_stats) list
 
     All three are total: no [result], no exceptions. Edge cases (single-column
     frame, all-NaN row, constant row, ≤1-non-NaN-cell row for [zscore]) emit
-    [Float.nan] at the appropriate cells per the PRD.
+    [Float.nan] at the appropriate cells.
 
     Output frequency tag and index are structurally identical to the input
     frame's: same length, same [Ptime.t] array, same order.

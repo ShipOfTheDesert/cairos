@@ -2,8 +2,8 @@
 
    Loads each fixture frame via Cairos_io.frame_of_csv, applies Frame.rank /
    Frame.zscore, and compares cell-by-cell against the Pandas-emitted
-   expected-output frame. Exits 0 on full agreement at tolerance 1e-10
-   (RFC 0050 R1), 1 on any cell mismatch, 2 on tooling-level failure
+   expected-output frame. Exits 0 on full agreement at tolerance 1e-10,
+   1 on any cell mismatch, 2 on tooling-level failure
    (missing fixture, malformed CSV).
 
    Pattern mirrors test/unit/cairos_finance/cross_validate.ml: this is an
@@ -27,8 +27,7 @@ let read_frame_fixture ~path : [ `Daily ] Frame.t =
   | Ok f -> f
   | Error msg -> die_tooling "%s: %s" path msg
 
-(* NaN-aware tolerance comparator per
-   ~/.claude/solutions/general/nan-aware-tolerance-comparator.md.
+(* NaN-aware tolerance comparator.
    Returns Ok max_abs_diff on agreement, Error msg on first mismatch. *)
 let compare_columns ~tolerance ~column ~expected ~actual :
     (float, string) result =

@@ -6,7 +6,7 @@
    This bench is distinct from bench_cumprod.ml's "expanding product" cell,
    which exists to contrast Series.cumprod's O(n) scan with the O(n^2) naive
    expanding-product baseline. This file measures expanding's own per-call
-   cost for a typical reducer at the PRD's pinned input size.
+   cost for a typical reducer at the pinned input size.
 
    Prerequisite: this file is only built when cairos's :with-test deps are
    installed (bechamel + bechamel-notty). Run

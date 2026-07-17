@@ -75,7 +75,7 @@ let canonical_order =
       | c -> c)
 
 (* ------------------------------------------------------------------ *)
-(* TP-Bench-1 — output_mode dispatches on env var                      *)
+(* output_mode dispatches on env var *)
 (* ------------------------------------------------------------------ *)
 
 let test_output_mode_dispatches_on_env_var () =
@@ -93,7 +93,7 @@ let test_output_mode_dispatches_on_env_var () =
       Alcotest.(check bool) "\"true\" → Notty" true (output_mode () = `Notty))
 
 (* ------------------------------------------------------------------ *)
-(* TP-Bench-2 — write_consolidated / load_baseline round-trip          *)
+(* write_consolidated / load_baseline round-trip *)
 (* ------------------------------------------------------------------ *)
 
 let test_parse_consolidated_round_trip () =
@@ -115,7 +115,7 @@ let test_parse_consolidated_round_trip () =
             (canonical_order loaded))
 
 (* ------------------------------------------------------------------ *)
-(* TP-Bench-2b — write_consolidated reports IO failures as Error       *)
+(* write_consolidated reports IO failures as Error *)
 (* ------------------------------------------------------------------ *)
 
 (* Library-shaped per CONTRIBUTING.md §V: an unwritable path must surface
@@ -133,7 +133,7 @@ let test_write_consolidated_reports_io_failure () =
         (String.length msg > 0)
 
 (* ------------------------------------------------------------------ *)
-(* TP-Bench-3 — bench_doc_of_cells round-trips via parse              *)
+(* bench_doc_of_cells round-trips via parse *)
 (* ------------------------------------------------------------------ *)
 
 (* Catches a regression in the per-bench emission path that the consolidated
@@ -163,7 +163,7 @@ let test_bench_doc_of_cells_round_trips_via_parse () =
         (canonical_order parsed)
 
 (* ------------------------------------------------------------------ *)
-(* TP-Bench-4 — round_6g preserves non-finite, rounds finite          *)
+(* round_6g preserves non-finite, rounds finite *)
 (* ------------------------------------------------------------------ *)
 
 let test_round_6g_preserves_non_finite_and_rounds_finite () =
@@ -182,7 +182,7 @@ let test_round_6g_preserves_non_finite_and_rounds_finite () =
     "exact 6g representable preserved" 100.0 (round_6g 100.0)
 
 (* ------------------------------------------------------------------ *)
-(* TP-Bench-5 — parse_consolidated rejects malformed inputs           *)
+(* parse_consolidated rejects malformed inputs *)
 (* ------------------------------------------------------------------ *)
 
 let test_parse_consolidated_rejects_malformed () =
@@ -254,7 +254,7 @@ let test_parse_consolidated_rejects_malformed () =
        ])
 
 (* ------------------------------------------------------------------ *)
-(* TP-Bench-6 — load_baseline reports IO and JSON parse failures      *)
+(* load_baseline reports IO and JSON parse failures *)
 (* ------------------------------------------------------------------ *)
 
 let test_load_baseline_handles_io_and_parse_errors () =
@@ -282,7 +282,7 @@ let test_load_baseline_handles_io_and_parse_errors () =
       | Ok _ -> Alcotest.fail "expected Error on malformed JSON")
 
 (* ------------------------------------------------------------------ *)
-(* TP-Bench-7 — read_bench_dir consolidates per-bench tempfiles       *)
+(* read_bench_dir consolidates per-bench tempfiles *)
 (* ------------------------------------------------------------------ *)
 
 (* Helper: with a fresh tempdir, run [f] on it; clean up on exit. *)
@@ -339,7 +339,7 @@ let test_read_bench_dir_round_trips () =
             (canonical_order cells))
 
 (* ------------------------------------------------------------------ *)
-(* TP-Bench-8 — read_bench_dir rejects empty / malformed / missing    *)
+(* read_bench_dir rejects empty / malformed / missing *)
 (* ------------------------------------------------------------------ *)
 
 let test_read_bench_dir_rejects_bad_inputs () =
@@ -368,7 +368,7 @@ let test_read_bench_dir_rejects_bad_inputs () =
       | Ok _ -> Alcotest.fail "expected Error for malformed *.json")
 
 (* ------------------------------------------------------------------ *)
-(* TP-Bench-9 — validate_coverage reports missing baseline cells      *)
+(* validate_coverage reports missing baseline cells *)
 (* ------------------------------------------------------------------ *)
 
 let test_validate_coverage_reports_missing_baseline_cells () =
@@ -389,7 +389,7 @@ let test_validate_coverage_reports_missing_baseline_cells () =
   | Ok _ -> Alcotest.fail "B missing from current must fail validate_coverage"
 
 (* ------------------------------------------------------------------ *)
-(* TP-Bench-10 — validate_coverage permits new current cells          *)
+(* validate_coverage permits new current cells *)
 (* ------------------------------------------------------------------ *)
 
 let test_validate_coverage_permits_new_current_cells () =
@@ -408,7 +408,7 @@ let test_validate_coverage_permits_new_current_cells () =
   | Error _ -> Alcotest.fail "new bench cell must not block validate_coverage"
 
 (* ------------------------------------------------------------------ *)
-(* TP-Bench-11 — validate_coverage ignores allocation instances       *)
+(* validate_coverage ignores allocation instances *)
 (* ------------------------------------------------------------------ *)
 
 (* If an allocation cell is missing from current, validate_coverage must
@@ -432,7 +432,7 @@ let test_validate_coverage_ignores_allocation_instances () =
          counts"
 
 (* ------------------------------------------------------------------ *)
-(* TP-Bench-12 — regress flags >threshold cells, ignores below        *)
+(* regress flags >threshold cells, ignores below *)
 (* ------------------------------------------------------------------ *)
 
 let test_regress_flags_above_threshold_only () =
@@ -478,7 +478,7 @@ let test_regress_flags_above_threshold_only () =
       Alcotest.fail "119.9% (19.9% over) must NOT regress at threshold 0.20"
 
 (* ------------------------------------------------------------------ *)
-(* TP-Bench-13 — regress ignores allocation instances                  *)
+(* regress ignores allocation instances *)
 (* ------------------------------------------------------------------ *)
 
 let test_regress_ignores_allocation_instances () =
@@ -510,7 +510,7 @@ let test_regress_ignores_allocation_instances () =
         "allocation instance should not gate; only monotonic-clock counts"
 
 (* ------------------------------------------------------------------ *)
-(* TP-Bench-15 — every bench file's [~bench:"X"] matches its filename  *)
+(* every bench file's [~bench:"X"] matches its filename *)
 (* ------------------------------------------------------------------ *)
 
 (* Pins the per-bench [~bench:] string against the source filename stem
@@ -582,7 +582,7 @@ let test_bench_strings_match_filenames () =
     "at least one bench harness was checked" true (!checked > 0)
 
 (* ------------------------------------------------------------------ *)
-(* TP-Bench-14 — monotonic_clock_label matches Bechamel's witness      *)
+(* monotonic_clock_label matches Bechamel's witness *)
 (* ------------------------------------------------------------------ *)
 
 (* C9: the gate's filter literal lives in [Bench_emit.monotonic_clock_label].
@@ -598,7 +598,7 @@ let test_monotonic_clock_label_matches_bechamel () =
     bechamel_label
 
 (* ------------------------------------------------------------------ *)
-(* TP-Bench-16 — bench_compare/bench_record exit-code wiring           *)
+(* bench_compare/bench_record exit-code wiring *)
 (* ------------------------------------------------------------------ *)
 
 (* The driver executables are thin wrappers over [Bench_emit] functions

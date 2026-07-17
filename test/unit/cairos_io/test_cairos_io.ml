@@ -292,10 +292,10 @@ let frame_of_csv_with_no_header_wider_subsequent_rows_truncates_silently () =
         (values_to_array c2)
 
 let of_csv_quoted_field_is_unsupported () =
-  (* Pins FR-9's "Quoting: none" boundary documented in cairos_io.mli. A
+  (* Pins the "Quoting: none" boundary documented in cairos_io.mli. A
      timestamp wrapped in literal double quotes is not stripped — it flows
      to Index.daily verbatim and surfaces as Unparseable_timestamp at line 2.
-     A future PRD that adopts ocaml-csv would need to delete or re-purpose
+     A future change that adopts ocaml-csv would need to delete or re-purpose
      this test. *)
   Cairos_io.of_csv ~freq:Cairos.Freq.Day (fixture "single_quoted_timestamp.csv")
   |> check_error ~label:"quoted timestamp not supported" ~needles:[ "line 2" ]

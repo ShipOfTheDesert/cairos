@@ -1,7 +1,7 @@
 (* Run with: opam exec -- dune exec bench/bench_align.exe
 
    Benchmark: Cairos.Align.align for strategies Inner, Left, Asof Backward at
-   n in {100, 1_000, 10_000} on daily float64 series (PRD FR-1 line 3).
+   n in {100, 1_000, 10_000} on daily float64 series.
 
    Two input shapes are pre-built once per n:
    - identical-index pair (Left strategy: every left timestamp matches a right

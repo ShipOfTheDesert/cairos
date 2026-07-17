@@ -115,7 +115,7 @@ let compare_series ~tolerance ~expected ~actual : (unit, string) result =
     check 0
 
 let compare_arrays ~tolerance ~expected ~actual : (unit, string) result =
-  (* NaN handling (added for RFC 0022 Risk #2): two NaNs at the same index
+  (* NaN handling: two NaNs at the same index
      compare equal (the [sharpe] flat-series fixture relies on this), but
      NaN versus a finite value is a mismatch. The previous implementation
      silently passed both cases because [Float.abs nan > tolerance] is

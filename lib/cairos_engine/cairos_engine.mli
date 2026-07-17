@@ -1,7 +1,5 @@
 (** [Cairos_engine] — vectorized backtest loop for the Cairos time-series
-    library. See {{:../prds/0055-vectorized-backtest-loop.md} PRD 0055},
-    {{:./0052-backtest-execution-conventions.md} RFC 0052},
-    {{:./0054-backtest-result-type.md} RFC 0054}. *)
+    library. *)
 
 module Trade : sig
   (** A round-trip trade record produced by [Backtest.run]. *)
@@ -62,15 +60,15 @@ module Backtest : sig
       failures.
 
       [commission] and [slippage] are dimensionless fractions (e.g. [0.001] is
-      10 basis points). Both are required: there is no default. Per RFC 0052
-      OC-3 as amended by A1, the per-rebalance per-instrument cost is
+      10 basis points). Both are required: there is no default. The
+      per-rebalance per-instrument cost is
       [(commission +. slippage) *. abs(weight_delta) *. nav], where [nav] is the
       pre-cost NAV at the rebalance bar (post-MTM, pre-deduction). Cost is thus
       a pure function of turnover as a fraction of NAV, independent of price
       level; the total is deducted from NAV before new weights are applied.
 
       [rebalance_index]'s frequency is independent of [price_frame]'s frequency;
-      entrypoint validation per RFC 0052 enforces calendar alignment.
+      entrypoint validation enforces calendar alignment.
 
       Funding costs (carry on short positions, financing on leveraged longs) are
       not modelled. See Post-MVP v1 for event-driven execution with financing.

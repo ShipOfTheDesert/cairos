@@ -135,8 +135,7 @@ val dropna : ('freq, (float, 'b) Nx.t) t -> ('freq, (float, 'b) Nx.t) t
     values in [s].
 
     [dropna] is total: an empty input returns an empty output, and an all-NaN
-    input returns an empty output. No [result] wrapping, no exceptions (PRD
-    NFR-4).
+    input returns an empty output. No [result] wrapping, no exceptions.
 
     Only [Float.nan] is filtered. [infinity] and [neg_infinity] are preserved,
     since [Float.is_nan] returns [false] for both; downstream consumers that

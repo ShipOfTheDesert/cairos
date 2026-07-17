@@ -50,7 +50,7 @@ val output_mode : unit -> [ `Notty | `Json ]
     the value is exactly ["json"] (lowercase, exact match); any other value
     (including unset, ["JSON"], ["yes"]) returns [`Notty]. Bench [.ml] files
     dispatch on this at the top of [let () =]: Notty branch unchanged from the
-    pre-PRD pattern, JSON branch calls {!to_channel}. *)
+    prior pattern, JSON branch calls {!to_channel}. *)
 
 (** {1 JSON I/O} *)
 

@@ -1,7 +1,7 @@
 let epoch_2024_01_01_utc = 1_704_067_200.0
 
 (* The two [failwith]s below are unreachable by construction (synthetic UTC
-   epoch + length-matched [Nx.t]) and are intentional per RFC 0030 §R4: a
+   epoch + length-matched [Nx.t]) and are intentional: a
    generator must return [Series.t], not [(_, string) result]. Do not "fix"
    by propagating [result] — that breaks the QCheck arbitrary contract. *)
 let make_daily_series_from_floats (xs : float array) :
@@ -203,7 +203,7 @@ let test_dropna_preserves_infinities () =
    signature ever stopped being polymorphic in the element-type phantom ['b]
    (for instance, forcing float64 output like [cumsum]/[cumprod] do), this
    line would fail to type-check and the regression would be caught before
-   running. RFC 0038 Options §A motivates ['b] preservation explicitly. *)
+   running. ['b] preservation is intentional. *)
 let test_dropna_preserves_float32_element_type () =
   let s = make_daily_float32_series_from_floats [| 1.0; Float.nan; 3.0 |] in
   let result : ([ `Daily ], (float, Bigarray.float32_elt) Nx.t) Cairos.Series.t

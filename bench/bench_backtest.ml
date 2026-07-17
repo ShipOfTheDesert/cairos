@@ -1,19 +1,18 @@
 (* Run with: opam exec -- dune exec bench/bench_backtest.exe
 
    Benchmark: Cairos_engine.Backtest.run at 100 instruments × n_bars daily
-   bars × weekly rebalances, indexed at n_bars in {250, 500, 1000} (PRD 0055
-   FR-6, RFC 0056 §Phase 5 / §Module Breakdown). One Bechamel benchmark cell
-   per indexed n_bars; the inner closure does exactly one Backtest.run.
+   bars × weekly rebalances, indexed at n_bars in {250, 500, 1000}. One
+   Bechamel benchmark cell per indexed n_bars; the inner closure does exactly
+   one Backtest.run.
 
-   Per the bechamel-staged-setup-hoisting handbook
-   (~/.claude/solutions/ocaml/bechamel-staged-setup-hoisting.md), the price
+   Following the bechamel staged-setup-hoisting pattern, the price
    frame, signal frame, and rebalance index are built once per indexed n_bars
    above the [Staged.stage] boundary. The closure captures those values so
    only the loop body runs per iteration.
 
    Fixture shape (deterministic, no randomness — the bench does not need
    reproducibility across machines beyond the OCaml side):
-   - n_cols = 100 (RFC 0056 §Phase 5 step 16, MVP scaling target).
+   - n_cols = 100 (MVP scaling target).
    - prices: per-instrument multiplicative random walks anchored at 1.0
      with per-bar ratios driven by an integer pseudo-random sequence so the
      ratio stays in [0.999, 1.001]. Strictly positive across all bars.
@@ -76,8 +75,7 @@ let make_price_columns ~n_bars =
 
 let rebalance_bars_for ~n_bars =
   (* Weekly rebalances at bars 5, 10, …, up to and including [n_bars - 2]
-     (the upper bound matches RFC 0052 entrypoint precondition 6: every
-     rebalance must have a T+1 open available). *)
+     (the upper bound ensures every rebalance has a T+1 open available). *)
   let last = n_bars - 2 in
   let rec loop bar acc =
     if bar > last then List.rev acc else loop (bar + rebalance_step) (bar :: acc)
@@ -168,7 +166,7 @@ let benchmark () =
      future regression that nudges per-iteration time higher could push
      sample count toward the OLS [r_square] noise floor. 8s preserves
      headroom (~1800 samples on the largest cell) while keeping the
-     three-cell wall-time at ~24s — well inside the bench-suite NFR-3
+     three-cell wall-time at ~24s — well inside the bench-suite time
      budget. *)
   let cfg =
     Benchmark.cfg ~limit:3000 ~quota:(Time.second 8.0) ~stabilize:true ()
