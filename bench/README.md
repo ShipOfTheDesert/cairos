@@ -5,7 +5,8 @@ default `just` gate.
 
 ## Recording the baseline
 
-Under FR-7 conditions: clean `_build/`, no competing load, single run:
+Under the standard recording conditions — clean `_build/`, no competing load,
+single run:
 
 ```bash
 opam exec -- dune clean

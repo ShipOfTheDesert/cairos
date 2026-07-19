@@ -154,9 +154,7 @@ module Backtest = struct
             done)
           bar_indices;
         if not !any_nonzero then
-          Error
-            "Backtest.run: no non-zero target weight at any rebalance date \
-             (PRD 0053 FR-11)"
+          Error "Backtest.run: no non-zero target weight at any rebalance date"
         else Ok bar_indices
 
   (* Loop body. Entrypoint validation has already pre-computed

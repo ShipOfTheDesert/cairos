@@ -102,7 +102,8 @@ let () = Cairos_jupyter.pp_series "prices" prices
 (* crucially the single aligned value is reused for BOTH band *)
 (* derivations. Computing `upper` and `lower` from the same *)
 (* `aligned_mean_std` (rather than calling `Align.align` twice) is the *)
-(* shape the PRD asks us to exercise: one alignment, two `map2` calls. *)
+(* shape this notebook sets out to exercise: one alignment, two `map2` *)
+(* calls. *)
 
 (* %% vscode={"languageId": "ocaml"} *)
 let sma_20 = Window.sma ~n:20 prices

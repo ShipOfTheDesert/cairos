@@ -464,9 +464,9 @@ let trade_pnl_sum_plus_one_equals_final_equity =
    too. [entry_price] / [exit_price] are excluded from the comparison — they
    scale with [k] by design.
 
-   This is the guard for the CG-1 defect class: a cost notional that multiplies
-   by an absolute price rather than NAV makes cost — and therefore equity and
-   pnl — move with [k].
+   This guards a defect class that shipped once and was fixed: a cost notional
+   that multiplies by an absolute price rather than NAV makes cost — and
+   therefore equity and pnl — move with [k].
 
    Two cost settings are exercised per case: the generator's drawn pair, and a
    fixed [(0.005, 0.005)]. The drawn commission may land arbitrarily close to
