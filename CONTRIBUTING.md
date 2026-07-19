@@ -138,22 +138,22 @@ it as an architectural question before touching any code.
 
 ### II. Spec-Driven Development
 
-All planning happens outside CC, in Claude.ai. CC receives finished planning
-documents and implements from them. The workflow is:
+No implementation begins without an approved written specification. Every
+feature carries a requirements document — problem statement, functional and
+non-functional requirements, explicit scope boundaries — and an implementation
+plan — module breakdown, key types and interfaces, implementation sequence,
+test plan. Both are agreed before any `.ml` file is touched, and the
+requirements half is frozen once approved.
 
-```
-docs/00_project_overview.md  -- phases (Claude.ai)
-docs/01_poc_planning.md      -- epics for current phase (Claude.ai)
-docs/epics/<n>.md            -- features for one epic (CC)
-docs/prds/<n>.md             -- one PRD per feature (CC)
-docs/rfcs/<n>.md             -- one RFC per feature (CC)
-docs/tasks/<n>.md            -- tasks derived from RFC (CC)
-```
+Planning artefacts are maintained outside this repository; what lands here is
+the code, the tests the specification called for, and the ADRs recording
+decisions that outlive a single feature. Commit messages and PR descriptions
+are where implementation rationale belongs — not inline comments citing
+documents a reader of this repository cannot open.
 
-Per epic: generate epic doc → per feature: PRD → RFC → tasks → implement.
-
-Architectural questions that arise during implementation are surfaced back to
-Claude.ai. CC does not make architectural decisions unilaterally.
+Architectural questions that arise mid-implementation are escalated and
+resolved in the specification, not settled unilaterally at the keyboard. If
+something is not covered by the approved plan, stop and raise it.
 
 ### III. Test-First
 
@@ -175,11 +175,13 @@ implementation being tested.
 **Oracle independence.** A reference implementation is only an oracle if it
 is derived from the specification, not the code. Any cross-validation
 reference (engine, WFO folds, future metrics without a library primitive)
-is authored from the RFC alone — the implementation must not be in the
-author's context. Record provenance alongside the reference (what was read,
-what was not). A reference written by reading the implementation proves only
-that the code equals its own port; it cannot catch modeling errors, and this
-failure mode shipped a real defect (see docs/ANALYSIS.md §6, 2026-07-16).
+is authored from the specification alone — the implementation must not be in
+the author's context. Record provenance alongside the reference: state the
+contract clauses it encodes, in full, so the oracle is self-contained and
+auditable without reaching for an external document. A reference written by
+reading the implementation proves only that the code equals its own port; it
+cannot catch modeling errors, and this failure mode has shipped a real defect
+in this project.
 
 ### IV. Make Invalid States Unrepresentable
 
@@ -206,8 +208,8 @@ Specific invariants that are structurally enforced:
 - GADTs are preferred over variants + runtime checks when the invariant is
   statically knowable. `Freq.t` is the canonical example.
 
-New type parameters or structural constraints must be flagged to Claude.ai
-before being added.
+New type parameters or structural constraints must be raised as an
+architectural question before being added.
 
 ### V. No Exceptions, Minimal Result
 

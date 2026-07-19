@@ -212,7 +212,7 @@ let () =
   |> Cairos_jupyter.display
 
 (* %% [markdown] *)
-(* ## Type system note — frequency tag rejection (FR-4) *)
+(* ## Type system note — frequency tag rejection *)
 (* *)
 (* While authoring this notebook I deliberately attempted a *)
 (* daily-vs-weekly alignment to confirm that the phantom frequency tag *)

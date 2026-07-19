@@ -475,7 +475,7 @@ let () =
         ] );
       ( "format boundary",
         [
-          Alcotest.test_case "quoted fields are not supported (FR-9)" `Quick
+          Alcotest.test_case "quoted fields are not supported" `Quick
             of_csv_quoted_field_is_unsupported;
         ] );
     ]

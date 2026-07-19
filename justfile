@@ -23,10 +23,11 @@ test:
     opam exec -- dune runtest
 
 # Opt-in benchmark runner. Intentionally NOT part of the default gate or
-# `dune runtest` (per RFC 0032): benchmarks are manual, time-sensitive, and
+# `dune runtest`: benchmarks are manual, time-sensitive, and
 # their output is noise for CI. Three recipes share the same per-bench loop:
 # `bench` renders Notty for human inspection; `bench-record` writes
-# bench/baseline.json under FR-7 conditions; `bench-compare` diffs the
+# bench/baseline.json under the recording conditions documented in
+# bench/README.md; `bench-compare` diffs the
 # current run against the committed baseline and exits non-zero on
 # >20% wall-clock regression or any missing-in-current cell.
 bench:
@@ -39,12 +40,12 @@ bench:
         opam exec -- dune exec "bench/$name.exe"
     done
 
-# Refresh bench/baseline.json. Run under FR-7 conditions: clean build, no
-# competing load. Each bench writes its JSON output to its own tempfile in
+# Refresh bench/baseline.json. Run under the documented recording
+# conditions: clean build, no competing load. Each bench writes its JSON output to its own tempfile in
 # a tempdir; bench_record.exe reads the tempdir and rewrites
 # bench/baseline.json via Bench_emit.write_consolidated for diff stability.
-# The OCaml driver assembles the consolidated wrapper — no shell-side JSON
-# string-concat — per ~/.claude/solutions/ocaml/yojson-over-manual-json.md.
+# The OCaml driver assembles the consolidated wrapper so that JSON is built
+# by a real serialiser rather than shell-side string concatenation.
 bench-record:
     #!/usr/bin/env bash
     set -euo pipefail
