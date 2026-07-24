@@ -42,6 +42,15 @@ jobs:
         shell: bash
         run: just pin
 
+      # See .github/actions/ocaml-deps for why. These lint jobs do not use
+      # that composite action, so the refresh is repeated here.
+      - name: Refresh apt index
+        uses: nick-fields/retry@v3
+        with:
+          timeout_minutes: 5
+          max_attempts: 3
+          command: sudo apt-get update
+
       - name: Install dependencies
         uses: nick-fields/retry@v3
         with:
@@ -78,6 +87,15 @@ jobs:
         shell: bash
         run: just pin
 
+      # See .github/actions/ocaml-deps for why. These lint jobs do not use
+      # that composite action, so the refresh is repeated here.
+      - name: Refresh apt index
+        uses: nick-fields/retry@v3
+        with:
+          timeout_minutes: 5
+          max_attempts: 3
+          command: sudo apt-get update
+
       - name: Install dependencies
         uses: nick-fields/retry@v3
         with:
@@ -113,6 +131,15 @@ jobs:
       - name: Apply opam pins
         shell: bash
         run: just pin
+
+      # See .github/actions/ocaml-deps for why. These lint jobs do not use
+      # that composite action, so the refresh is repeated here.
+      - name: Refresh apt index
+        uses: nick-fields/retry@v3
+        with:
+          timeout_minutes: 5
+          max_attempts: 3
+          command: sudo apt-get update
 
       - name: Install dependencies
         uses: nick-fields/retry@v3
