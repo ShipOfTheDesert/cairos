@@ -1,7 +1,8 @@
 (* Run with: opam exec -- dune exec bench/bench_align.exe
 
-   Benchmark: Cairos.Align.align for strategies Inner, Left, Asof Backward at
-   n in {100, 1_000, 10_000} on daily float64 series.
+   Benchmark: Cairos.Align.align for strategies Inner, Left, Asof Backward, and
+   Cairos.Align.map2 against Cairos.Align.map2_nan on one shared aligned pair,
+   at n in {100, 1_000, 10_000} on daily float64 series.
 
    Two input shapes are pre-built once per n:
    - identical-index pair (Left strategy: every left timestamp matches a right
@@ -65,8 +66,58 @@ let test_asof_backward =
           | Ok _ -> ()
           | Error _ -> failwith "bench input violates align contract"))
 
+(* Two aligned inputs for the [map2] arms. The identical-index pair is
+   NaN-free, so [map2_nan]'s gate never fires and the two functions do the
+   same work; the offset pair aligns `Left against a shifted index, so every
+   unmatched position is NaN-filled and the gated branch runs on roughly
+   every cell. Benchmarking only the first would leave the branch that
+   distinguishes the two functions unmeasured. *)
+let aligned_table_for table =
+  List.map
+    (fun n ->
+      let a, b = pair_for table n in
+      match Cairos.Align.align ~strategy:`Left a b with
+      | Ok aligned -> (n, aligned)
+      | Error _ -> failwith "bench input violates align contract")
+    sizes
+
+let clean_aligned_table = aligned_table_for identical_table
+let nan_aligned_table = aligned_table_for offset_table
+
+let aligned_for table n =
+  match List.assoc_opt n table with
+  | Some a -> a
+  | None -> failwith (Printf.sprintf "bench input: no aligned pair for n=%d" n)
+
+let crossover fast slow = if fast > slow then 1.0 else 0.0
+
+let test_map2 =
+  Test.make_indexed ~name:"map2/n" ~fmt:"%s=%d" ~args:sizes (fun n ->
+      let aligned = aligned_for clean_aligned_table n in
+      Staged.stage (fun () -> ignore (Cairos.Align.map2 crossover aligned)))
+
+let test_map2_nan =
+  Test.make_indexed ~name:"map2-nan/n" ~fmt:"%s=%d" ~args:sizes (fun n ->
+      let aligned = aligned_for clean_aligned_table n in
+      Staged.stage (fun () ->
+          ignore (Cairos.Align.map2_nan aligned ~f:crossover)))
+
+let test_map2_nan_filled =
+  Test.make_indexed ~name:"map2-nan-filled/n" ~fmt:"%s=%d" ~args:sizes (fun n ->
+      let aligned = aligned_for nan_aligned_table n in
+      Staged.stage (fun () ->
+          ignore (Cairos.Align.map2_nan aligned ~f:crossover)))
+
 let test_align =
-  Test.make_grouped ~name:"align" [ test_inner; test_left; test_asof_backward ]
+  Test.make_grouped ~name:"align"
+    [
+      test_inner;
+      test_left;
+      test_asof_backward;
+      test_map2;
+      test_map2_nan;
+      test_map2_nan_filled;
+    ]
 
 let benchmark () =
   let instances =

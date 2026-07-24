@@ -241,7 +241,8 @@ let () =
         ~commission ~slippage
     with
     | Ok r -> r
-    | Error msg -> die_tooling "Backtest.run: %s" msg
+    | Error e ->
+        die_tooling "Backtest.run: %s" (Cairos_engine.Backtest.err_to_string e)
   in
 
   let expected_equity = read_series_fixture equity_path in

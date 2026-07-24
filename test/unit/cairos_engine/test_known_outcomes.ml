@@ -138,7 +138,7 @@ let always_long_equity_curve_matches_compounded_return () =
     Cairos_engine.Backtest.run ~price_frame ~signal_frame ~rebalance_index
       ~commission ~slippage
   with
-  | Error msg -> Alcotest.fail msg
+  | Error e -> Alcotest.fail (Cairos_engine.Backtest.err_to_string e)
   | Ok result ->
       let equity_actual =
         Nx.to_array (Cairos.Series.values result.equity_curve)
@@ -311,7 +311,7 @@ let alternating_long_short_pnl_matches_analytical () =
     Cairos_engine.Backtest.run ~price_frame ~signal_frame ~rebalance_index
       ~commission ~slippage
   with
-  | Error msg -> Alcotest.fail msg
+  | Error e -> Alcotest.fail (Cairos_engine.Backtest.err_to_string e)
   | Ok result ->
       let equity_actual =
         Nx.to_array (Cairos.Series.values result.equity_curve)
@@ -434,7 +434,7 @@ let single_rebalance_known_cost_known_pnl () =
     Cairos_engine.Backtest.run ~price_frame ~signal_frame ~rebalance_index
       ~commission ~slippage
   with
-  | Error msg -> Alcotest.fail msg
+  | Error e -> Alcotest.fail (Cairos_engine.Backtest.err_to_string e)
   | Ok result ->
       let equity_actual =
         Nx.to_array (Cairos.Series.values result.equity_curve)

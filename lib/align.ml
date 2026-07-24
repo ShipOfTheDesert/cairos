@@ -118,3 +118,8 @@ let map2 f aligned =
   (* Safety: aligned.index length equals array length by construction —
      the aligned type guarantees this invariant. *)
   Series.make_unsafe aligned.index values
+
+let map2_nan aligned ~f =
+  map2
+    (fun l r -> if Float.is_nan l || Float.is_nan r then Float.nan else f l r)
+    aligned

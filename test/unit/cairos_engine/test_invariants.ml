@@ -3,7 +3,7 @@
    The ten properties (count = 200 each). Inputs come from a single
    [engine_inputs_arb] generator that produces (price [Frame], signal
    [Frame], rebalance [Index.t], commission, slippage) tuples
-   structurally satisfying the seven entrypoint preconditions.
+   structurally satisfying the nine entrypoint preconditions.
    Determinism is pinned via [Qcheck_gen.pin_seed_from_env].
 
    The properties exercise behaviour the type system does not pin:
@@ -18,7 +18,7 @@
 
 (* === Generator ===
 
-   [engine_inputs_arb] produces inputs satisfying the seven
+   [engine_inputs_arb] produces inputs satisfying the nine
    preconditions structurally:
      1. price/signal share the same [Index.t] (built from the same
         synthetic timestamp array).
@@ -27,7 +27,12 @@
      3. rebalance index is non-empty (at least one bar selected).
      4-6. rebalance dates land in [1, n_bars-2] — in-range, matching
         a price-frame row, with T+1 available.
-     7. one (rebalance, instrument-0) cell is forced to ±1.0.
+     7. signal cells are drawn from [float_range (-1.0) 1.0], so no
+        rebalance row can carry a NaN.
+     8. one (rebalance, instrument-0) cell is forced to ±1.0.
+     9. prices are strictly-positive multiplicative random walks (see
+        below), so every cell the loop reads is finite and > 0.0 —
+        including under [scale_prices], whose factors are positive.
 
    Restrictions for the Layer 3 invariants to be well-defined:
      - target weights in [-1.0, 1.0] per instrument (leverage > 1.0 with
@@ -189,6 +194,13 @@ let run_with ~commission ~slippage ei =
 
 let run ei = run_with ~commission:ei.commission ~slippage:ei.slippage ei
 
+(* Every property here runs on generated inputs that satisfy the entrypoint
+   preconditions by construction, so an [Error] is a generator bug, not a
+   counterexample — all of them report it the same way. *)
+let fail_run e =
+  QCheck.Test.fail_reportf "Backtest.run errored: %s"
+    (Cairos_engine.Backtest.err_to_string e)
+
 let column_values name frame =
   match Cairos.Frame.get name frame with
   | Some s -> Nx.to_array (Cairos.Series.values s)
@@ -318,7 +330,7 @@ let equity_curve_starts_at_one =
   QCheck.Test.make ~count:200 ~name:"equity_curve_starts_at_one"
     engine_inputs_arb (fun ei ->
       match run ei with
-      | Error msg -> QCheck.Test.fail_reportf "Backtest.run errored: %s" msg
+      | Error e -> fail_run e
       | Ok result ->
           let arr = Nx.to_array (Cairos.Series.values result.equity_curve) in
           Float.equal arr.(0) 1.0)
@@ -333,7 +345,7 @@ let equity_curve_strictly_positive =
   QCheck.Test.make ~count:200 ~name:"equity_curve_strictly_positive"
     engine_inputs_arb (fun ei ->
       match run ei with
-      | Error msg -> QCheck.Test.fail_reportf "Backtest.run errored: %s" msg
+      | Error e -> fail_run e
       | Ok result ->
           let arr = Nx.to_array (Cairos.Series.values result.equity_curve) in
           Array.for_all (fun x -> x > 0.0) arr)
@@ -358,7 +370,7 @@ let transaction_costs_non_negative =
   QCheck.Test.make ~count:200 ~name:"transaction_costs_non_negative"
     engine_inputs_arb (fun ei ->
       match run ei with
-      | Error msg -> QCheck.Test.fail_reportf "Backtest.run errored: %s" msg
+      | Error e -> fail_run e
       | Ok result ->
           let cs = ei.commission +. ei.slippage in
           List.for_all
@@ -377,7 +389,7 @@ let trade_count_matches_round_trip_resolutions =
   QCheck.Test.make ~count:200 ~name:"trade_count_matches_round_trip_resolutions"
     engine_inputs_arb (fun ei ->
       match run ei with
-      | Error msg -> QCheck.Test.fail_reportf "Backtest.run errored: %s" msg
+      | Error e -> fail_run e
       | Ok result ->
           let expected = expected_trade_count ei in
           let actual = Cairos.Nonempty.length result.trades in
@@ -394,7 +406,7 @@ let max_drawdown_equals_min_drawdown_series =
   QCheck.Test.make ~count:200 ~name:"max_drawdown_equals_min_drawdown_series"
     engine_inputs_arb (fun ei ->
       match run ei with
-      | Error msg -> QCheck.Test.fail_reportf "Backtest.run errored: %s" msg
+      | Error e -> fail_run e
       | Ok result ->
           let mdd = Cairos_finance.max_drawdown result.equity_curve in
           let dd_series = Cairos_finance.drawdown_series result.equity_curve in
@@ -415,7 +427,7 @@ let weights_constant_between_rebalances =
   QCheck.Test.make ~count:200 ~name:"weights_constant_between_rebalances"
     engine_inputs_arb (fun ei ->
       match run ei with
-      | Error msg -> QCheck.Test.fail_reportf "Backtest.run errored: %s" msg
+      | Error e -> fail_run e
       | Ok result ->
           let is_rebal = rebal_mask ei in
           let names = Cairos.Frame.columns result.weights in
@@ -440,7 +452,7 @@ let trade_pnl_sum_plus_one_equals_final_equity =
   QCheck.Test.make ~count:200 ~name:"trade_pnl_sum_plus_one_equals_final_equity"
     engine_inputs_arb (fun ei ->
       match run ei with
-      | Error msg -> QCheck.Test.fail_reportf "Backtest.run errored: %s" msg
+      | Error e -> fail_run e
       | Ok result ->
           let trades = Cairos.Nonempty.to_list result.trades in
           let n_trades = List.length trades in
@@ -496,7 +508,8 @@ let price_scale_invariance =
             QCheck.Test.fail_reportf
               "Backtest.run errored on unscaled inputs (commission=%g, \
                slippage=%g): %s"
-              commission slippage msg
+              commission slippage
+              (Cairos_engine.Backtest.err_to_string msg)
         | Ok base ->
             let base_equity = equity_of base in
             let base_trades = trades_of base in
@@ -507,7 +520,8 @@ let price_scale_invariance =
                     QCheck.Test.fail_reportf
                       "Backtest.run errored at k=%g (commission=%g, \
                        slippage=%g): %s"
-                      k commission slippage msg
+                      k commission slippage
+                      (Cairos_engine.Backtest.err_to_string msg)
                 | Ok scaled ->
                     let scaled_equity = equity_of scaled in
                     let scaled_trades = trades_of scaled in
@@ -615,7 +629,8 @@ let commission_monotonic_in_final_nav =
         match run_with ~commission ~slippage:ei.slippage ei with
         | Error msg ->
             QCheck.Test.fail_reportf "Backtest.run errored at commission=%g: %s"
-              commission msg
+              commission
+              (Cairos_engine.Backtest.err_to_string msg)
         | Ok result ->
             let arr = Nx.to_array (Cairos.Series.values result.equity_curve) in
             arr.(ei.n_bars - 1)
@@ -643,7 +658,7 @@ let zero_cost_equals_frictionless_recursion =
   QCheck.Test.make ~count:200 ~name:"zero_cost_equals_frictionless_recursion"
     engine_inputs_arb (fun ei ->
       match run_with ~commission:0.0 ~slippage:0.0 ei with
-      | Error msg -> QCheck.Test.fail_reportf "Backtest.run errored: %s" msg
+      | Error e -> fail_run e
       | Ok result ->
           let actual = Nx.to_array (Cairos.Series.values result.equity_curve) in
           let expected = frictionless_nav ei in

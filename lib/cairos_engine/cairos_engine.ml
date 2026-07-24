@@ -11,6 +11,67 @@ module Trade = struct
 end
 
 module Backtest = struct
+  type calendar_violation =
+    | Precedes_first_bar of { timestamp : Ptime.t }
+    | No_matching_row of { timestamp : Ptime.t }
+    | Last_bar_no_next_open of { timestamp : Ptime.t }
+
+  type err =
+    | Index_mismatch
+    | Column_mismatch of { price : string list; signal : string list }
+    | Empty_rebalance_index
+    | Calendar_violations of calendar_violation Cairos.Nonempty.t
+    | No_nonzero_target_weight
+    | Nan_signal_at_rebalance of {
+        cells : (Ptime.t * string) Cairos.Nonempty.t;
+      }
+    | Invalid_price of { cells : (Ptime.t * string * float) Cairos.Nonempty.t }
+
+  let calendar_violation_to_string = function
+    | Precedes_first_bar { timestamp } ->
+        Printf.sprintf "rebalance date %s precedes price frame's first bar"
+          (Ptime.to_rfc3339 timestamp)
+    | No_matching_row { timestamp } ->
+        Printf.sprintf "rebalance date %s does not match any price-frame row"
+          (Ptime.to_rfc3339 timestamp)
+    | Last_bar_no_next_open { timestamp } ->
+        Printf.sprintf
+          "rebalance date %s is the last bar — no T+1 open available"
+          (Ptime.to_rfc3339 timestamp)
+
+  let err_to_string = function
+    | Index_mismatch ->
+        "Backtest.run: price and signal frames have different indices"
+    | Column_mismatch { price; signal } ->
+        Printf.sprintf
+          "Backtest.run: price and signal frames have different columns (%s vs \
+           %s)"
+          (String.concat ", " price)
+          (String.concat ", " signal)
+    | Empty_rebalance_index -> "Backtest.run: rebalance index is empty"
+    | Calendar_violations vs ->
+        "Backtest.run: calendar precondition failures:\n  - "
+        ^ String.concat "\n  - "
+            (List.map calendar_violation_to_string (Cairos.Nonempty.to_list vs))
+    | No_nonzero_target_weight ->
+        "Backtest.run: no non-zero target weight at any rebalance date"
+    | Nan_signal_at_rebalance { cells } ->
+        "Backtest.run: NaN signal at rebalance date:\n  - "
+        ^ String.concat "\n  - "
+            (List.map
+               (fun (t, inst) ->
+                 Printf.sprintf "%s %s" (Ptime.to_rfc3339 t) inst)
+               (Cairos.Nonempty.to_list cells))
+    | Invalid_price { cells } ->
+        "Backtest.run: price is not strictly positive and finite where the \
+         loop reads it:\n\
+        \  - "
+        ^ String.concat "\n  - "
+            (List.map
+               (fun (t, inst, v) ->
+                 Printf.sprintf "%s %s = %g" (Ptime.to_rfc3339 t) inst v)
+               (Cairos.Nonempty.to_list cells))
+
   type 'freq result = {
     equity_curve : ('freq, (float, Bigarray.float64_elt) Nx.t) Cairos.Series.t;
     returns : ('freq, (float, Bigarray.float64_elt) Nx.t) Cairos.Series.t;
@@ -72,7 +133,21 @@ module Backtest = struct
     in
     loop 0
 
-  (* Two-tier entrypoint validation, in order, steps 1–7:
+  (* Everything [validate_inputs] pre-computes for [run_loop], so the loop
+     performs no timestamp lookups and carries no second model of the held
+     weights. [held.(j).(t)] is the target weight of instrument [j] in force
+     at bar [t] — the target from the most recent rebalance date <= [t], or
+     [0.0] before the first. It is both what step 9 scans against and what
+     the loop reads at every bar, so validation and execution cannot drift:
+     a divergence between the two would fail open, letting an unvalidated
+     price reach NAV. It is also the frame returned as [result.weights]. *)
+  type validated = {
+    rebalance_bars : int array;
+    is_rebalance : bool array;
+    held : float array array;
+  }
+
+  (* Two-tier entrypoint validation, in order, steps 1–9:
 
      Tier 1 (shape, fail-fast):
        1. Price and signal frames have the same [Index.t].
@@ -85,99 +160,162 @@ module Backtest = struct
        6. Every rebalance date has a T+1 open available.
 
      Tier 3 (fail-fast):
-       7. At least one (rebalance, instrument) target weight != 0.0
+       7. No signal cell on a rebalance row is NaN. Ordered before step 8
+          because an all-NaN rebalance row also has no non-zero weight, and
+          the NaN is the cause rather than the consequence.
+       8. At least one (rebalance, instrument) target weight != 0.0
           (structural justification for [Trade.t Nonempty.t]).
+       9. Every price cell the loop reads at non-zero exposure is strictly
+          positive and finite. Scoped to the read set rather than the whole
+          frame, so an instrument that never trades may carry any prices:
+          a cell is read as a T+1 execution price when the instrument's
+          weight delta at a rebalance date is non-zero, and as a
+          mark-to-market price when [held.(t) <> 0.0 || held.(t-1) <> 0.0]
+          — two-sided because mark-to-market at bar [t] applies
+          [held.(t-1)] to both [price.(t)] and [price.(t-1)], so an exit
+          bar carries zero held weight yet is still read at full exposure.
+          Ordered last: it needs the held-weight path, which step 7 must
+          first make NaN-free.
 
-     On success, returns the [int array] mapping each rebalance row to its
-     bar index in the price frame — pre-computed here to avoid timestamp
-     lookups inside the loop. *)
+     On success, returns the [validated] record the loop runs on. *)
   let validate_inputs ~price_idx ~signal_idx ~price_columns ~signal_columns
-      ~rebalance_index ~signal_data =
+      ~rebalance_index ~price_data ~signal_data =
+    let ( let* ) = Result.bind in
+    (* [reject cond err] fails the tier when [cond] holds; [reject_any cells
+       f] fails it when the offender list is non-empty, lifting that list —
+       already in reporting order — into the [Nonempty.t] the variant
+       demands. The [None] arm is the tier passing, not an unreachable
+       case. *)
+    let reject cond err = if cond then Error err else Ok () in
+    let reject_any cells f =
+      match Cairos.Nonempty.of_list cells with
+      | Some ne -> Error (f ne)
+      | None -> Ok ()
+    in
     let n_bars = Cairos.Index.length price_idx in
     let n_rebal = Cairos.Index.length rebalance_index in
-    if not (indices_match price_idx signal_idx) then
-      Error "Backtest.run: price and signal frames have different indices"
-    else if price_columns <> signal_columns then
-      Error
-        ("Backtest.run: price and signal frames have different columns ("
-        ^ String.concat ", " price_columns
-        ^ " vs "
-        ^ String.concat ", " signal_columns
-        ^ ")")
-    else if n_rebal = 0 then Error "Backtest.run: rebalance index is empty"
-    else
-      let price_ts = Cairos.Index.timestamps price_idx in
-      let rebal_ts = Cairos.Index.timestamps rebalance_index in
-      let bar_indices = Array.make n_rebal (-1) in
-      let cal_errs = ref [] in
-      let last_bar_idx = n_bars - 1 in
-      let first_ts = price_ts.(0) in
-      Array.iteri
-        (fun i t ->
-          if Ptime.compare t first_ts < 0 then
-            cal_errs :=
-              Printf.sprintf
-                "rebalance date %s precedes price frame's first bar"
-                (Ptime.to_rfc3339 t)
-              :: !cal_errs
-          else
-            match find_row price_ts t with
-            | None ->
-                cal_errs :=
-                  Printf.sprintf
-                    "rebalance date %s does not match any price-frame row"
-                    (Ptime.to_rfc3339 t)
-                  :: !cal_errs
-            | Some idx ->
-                bar_indices.(i) <- idx;
-                if idx = last_bar_idx then
-                  cal_errs :=
-                    Printf.sprintf
-                      "rebalance date %s is the last bar — no T+1 open \
-                       available"
-                      (Ptime.to_rfc3339 t)
-                    :: !cal_errs)
-        rebal_ts;
-      if !cal_errs <> [] then
-        Error
-          ("Backtest.run: calendar precondition failures:\n  - "
-          ^ String.concat "\n  - " (List.rev !cal_errs))
-      else
-        let n_cols = Array.length signal_data in
-        let any_nonzero = ref false in
-        Array.iter
-          (fun bar_idx ->
-            for j = 0 to n_cols - 1 do
-              let w = signal_data.(j).(bar_idx) in
-              if (not (Float.is_nan w)) && not (Float.equal w 0.0) then
-                any_nonzero := true
-            done)
-          bar_indices;
-        if not !any_nonzero then
-          Error "Backtest.run: no non-zero target weight at any rebalance date"
-        else Ok bar_indices
+    let n_cols = Array.length signal_data in
+    let* () =
+      reject (not (indices_match price_idx signal_idx)) Index_mismatch
+    in
+    let* () =
+      reject
+        (price_columns <> signal_columns)
+        (Column_mismatch { price = price_columns; signal = signal_columns })
+    in
+    let* () = reject (n_rebal = 0) Empty_rebalance_index in
+    let price_ts = Cairos.Index.timestamps price_idx in
+    let rebal_ts = Cairos.Index.timestamps rebalance_index in
+    let columns_arr = Array.of_list price_columns in
+    let bar_indices = Array.make n_rebal (-1) in
+    let cal_errs = ref [] in
+    let last_bar_idx = n_bars - 1 in
+    let first_ts = price_ts.(0) in
+    Array.iteri
+      (fun i t ->
+        if Ptime.compare t first_ts < 0 then
+          cal_errs := Precedes_first_bar { timestamp = t } :: !cal_errs
+        else
+          match find_row price_ts t with
+          | None -> cal_errs := No_matching_row { timestamp = t } :: !cal_errs
+          | Some idx ->
+              bar_indices.(i) <- idx;
+              if idx = last_bar_idx then
+                cal_errs := Last_bar_no_next_open { timestamp = t } :: !cal_errs)
+      rebal_ts;
+    let* () =
+      reject_any (List.rev !cal_errs) (fun vs -> Calendar_violations vs)
+    in
+    let nan_cells = ref [] in
+    let any_nonzero = ref false in
+    Array.iter
+      (fun bar_idx ->
+        for j = 0 to n_cols - 1 do
+          let w = signal_data.(j).(bar_idx) in
+          if Float.is_nan w then
+            nan_cells := (price_ts.(bar_idx), columns_arr.(j)) :: !nan_cells
+          else if not (Float.equal w 0.0) then any_nonzero := true
+        done)
+      bar_indices;
+    let* () =
+      reject_any (List.rev !nan_cells) (fun cells ->
+          Nan_signal_at_rebalance { cells })
+    in
+    let* () = reject (not !any_nonzero) No_nonzero_target_weight in
+    let is_rebalance = Array.make n_bars false in
+    Array.iter (fun bar_idx -> is_rebalance.(bar_idx) <- true) bar_indices;
+    let held = Array.make_matrix n_cols n_bars 0.0 in
+    for j = 0 to n_cols - 1 do
+      let w = ref 0.0 in
+      for t = 0 to n_bars - 1 do
+        if is_rebalance.(t) then w := signal_data.(j).(t);
+        held.(j).(t) <- !w
+      done
+    done;
+    (* Scanned column-major, matching the frame's layout; the offender list
+       is sorted back into bar-then-column order at the end. It is empty on
+       every accepted run, so the sort costs nothing on the happy path. *)
+    let bad_prices = ref [] in
+    for j = n_cols - 1 downto 0 do
+      for t = n_bars - 1 downto 0 do
+        let held_now = held.(j).(t) in
+        let held_prev = if t = 0 then 0.0 else held.(j).(t - 1) in
+        let mtm_read =
+          (not (Float.equal held_now 0.0)) || not (Float.equal held_prev 0.0)
+        in
+        let exec_read =
+          t > 0
+          && is_rebalance.(t - 1)
+          &&
+          (* The loop's own test, spelled the same way: [dw = target -. w_old]
+             against zero, not [target] against [w_old]. The two agree for
+             every finite weight and diverge for an infinite one, where
+             [inf -. inf] is NaN and the loop therefore executes a trade. *)
+          let w_old = if t >= 2 then held.(j).(t - 2) else 0.0 in
+          not (Float.equal (held_prev -. w_old) 0.0)
+        in
+        if mtm_read || exec_read then begin
+          let p = price_data.(j).(t) in
+          if not (Float.is_finite p && p > 0.0) then
+            bad_prices := (t, j, p) :: !bad_prices
+        end
+      done
+    done;
+    let* () =
+      reject_any
+        (List.map
+           (fun (t, j, p) -> (price_ts.(t), columns_arr.(j), p))
+           (List.stable_sort
+              (fun (t1, _, _) (t2, _, _) -> Int.compare t1 t2)
+              !bad_prices))
+        (fun cells -> Invalid_price { cells })
+    in
+    Ok { rebalance_bars = bar_indices; is_rebalance; held }
 
-  (* Loop body. Entrypoint validation has already pre-computed
-     [rebalance_bars] (the row index in the price frame for each rebalance
-     date) so the loop performs no timestamp lookups. *)
-  let run_loop ~price_idx ~price_columns ~price_data ~signal_data
-      ~rebalance_bars ~commission ~slippage =
+  (* Loop body. Entrypoint validation has already pre-computed everything in
+     [validated] — the rebalance bar indices, the rebalance mask, and the
+     held-weight path — so the loop performs no timestamp lookups and builds
+     no second model of the weights. [held] is read here and returned as
+     [result.weights]; see [validated]'s comment for why the two must be one
+     array. *)
+  let run_loop ~price_idx ~price_columns ~price_data ~validated ~commission
+      ~slippage =
+    let { rebalance_bars = _; is_rebalance; held } = validated in
     let n_cols = Array.length price_data in
     let n_bars = Cairos.Index.length price_idx in
     let price_ts = Cairos.Index.timestamps price_idx in
     let columns_arr = Array.of_list price_columns in
 
-    let is_rebalance = Array.make n_bars false in
-    Array.iter (fun bar_idx -> is_rebalance.(bar_idx) <- true) rebalance_bars;
+    (* The weight in force at bar [t], i.e. before bar [t]'s own rebalance
+       takes effect: [0.0] at bar 0, [held.(j).(t-1)] after. *)
+    let weight_before j t = if t = 0 then 0.0 else held.(j).(t - 1) in
 
-    let current_weights = Array.make n_cols 0.0 in
     let current_nav = ref 1.0 in
     let in_flight : in_flight option array = Array.make n_cols None in
     let trade_acc : Trade.t list ref = ref [] in
     let push_trade tr = trade_acc := tr :: !trade_acc in
 
     let equity_buf = Array.make n_bars 0.0 in
-    let weights_buf = Array.make_matrix n_cols n_bars 0.0 in
 
     let cs = commission +. slippage in
     let dws = Array.make n_cols 0.0 in
@@ -197,7 +335,7 @@ module Backtest = struct
         let nav_pre = !current_nav in
         let total_ret = ref 0.0 in
         for j = 0 to n_cols - 1 do
-          let w = current_weights.(j) in
+          let w = weight_before j t in
           if not (Float.equal w 0.0) then begin
             let p_now = price_data.(j).(t) in
             let p_prev = price_data.(j).(t - 1) in
@@ -218,8 +356,8 @@ module Backtest = struct
         let nav_after_mtm = !current_nav in
         let total_cost = ref 0.0 in
         for j = 0 to n_cols - 1 do
-          let target = signal_data.(j).(t) in
-          let w_old = current_weights.(j) in
+          let target = held.(j).(t) in
+          let w_old = weight_before j t in
           let dw = target -. w_old in
           (* Cost is turnover (|Δw|) as a fraction of pre-cost NAV, not of
              price level. *)
@@ -233,8 +371,8 @@ module Backtest = struct
         for j = 0 to n_cols - 1 do
           let dw = dws.(j) in
           if not (Float.equal dw 0.0) then begin
-            let target = signal_data.(j).(t) in
-            let w_old = current_weights.(j) in
+            let target = held.(j).(t) in
+            let w_old = weight_before j t in
             let cost_j = costs.(j) in
             let inst = columns_arr.(j) in
             let exec_price = price_data.(j).(exec_bar) in
@@ -313,16 +451,10 @@ module Backtest = struct
           end
         done;
 
-        for j = 0 to n_cols - 1 do
-          current_weights.(j) <- signal_data.(j).(t)
-        done;
         current_nav := nav_after_cost
       end;
 
-      equity_buf.(t) <- !current_nav;
-      for j = 0 to n_cols - 1 do
-        weights_buf.(j).(t) <- current_weights.(j)
-      done
+      equity_buf.(t) <- !current_nav
     done;
 
     (* End-of-backtest force-close: every still-open trade resolves at the
@@ -357,7 +489,7 @@ module Backtest = struct
     let weights_pairs =
       List.mapi
         (fun j name ->
-          let nx = Nx.create Nx.float64 [| n_bars |] weights_buf.(j) in
+          let nx = Nx.create Nx.float64 [| n_bars |] held.(j) in
           let s = Cairos.Series.make_unsafe price_idx nx in
           (name, s))
         price_columns
@@ -385,7 +517,7 @@ module Backtest = struct
       | Some ts -> ts
       | None ->
           (* Unreachable under the entrypoint contract: validation step 3
-             guarantees the rebalance index is non-empty, and step 7
+             guarantees the rebalance index is non-empty, and step 8
              guarantees at least one (rebalance, instrument) pair carries
              a non-zero target weight. The first such pair produces an
              inception, which becomes a trade either via a later
@@ -404,11 +536,11 @@ module Backtest = struct
     let signal_data = frame_data signal_frame signal_columns in
     match
       validate_inputs ~price_idx ~signal_idx ~price_columns ~signal_columns
-        ~rebalance_index ~signal_data
+        ~rebalance_index ~price_data ~signal_data
     with
     | Error e -> Error e
-    | Ok rebalance_bars ->
+    | Ok validated ->
         Ok
-          (run_loop ~price_idx ~price_columns ~price_data ~signal_data
-             ~rebalance_bars ~commission ~slippage)
+          (run_loop ~price_idx ~price_columns ~price_data ~validated ~commission
+             ~slippage)
 end

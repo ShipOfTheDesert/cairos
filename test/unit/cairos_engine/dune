@@ -8,7 +8,7 @@
  (name test_validation_errors)
  (package cairos_engine)
  (modules test_validation_errors)
- (libraries cairos cairos_engine nx alcotest))
+ (libraries cairos cairos_engine nx ptime alcotest))
 
 (test
  (name test_invariants)
