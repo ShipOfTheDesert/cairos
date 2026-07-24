@@ -107,6 +107,110 @@ let inner_index_strictly_monotonic =
           |> Array.to_seqi
           |> Seq.for_all (fun (i, t) -> i = 0 || Ptime.compare ts.(i - 1) t < 0))
 
+(* [map2_nan] yields NaN exactly at the union of the input-NaN positions and
+   agrees with [map2] everywhere else (align.mli).
+
+   "Exactly" is only well-defined because [f] is drawn from functions that are
+   NaN-free on finite inputs — gating is on inputs only, so an [f] that could
+   emit NaN from a clean pair would put a NaN at an ungated position and make
+   the property false as stated. Division is excluded for that reason
+   ([0.0 /. 0.0] is NaN). *)
+let nan_free_on_finite_fns =
+  [|
+    ("add", ( +. ));
+    ("sub", ( -. ));
+    ("mul", ( *. ));
+    ("gt_indicator", fun a b -> if a > b then 1.0 else 0.0);
+    ("max", Float.max);
+    ("min", Float.min);
+  |]
+
+(* Cells are NaN with probability ~5% (one roll in twenty), mirroring
+   [Qcheck_gen.daily_frame_finite_floats_with_nan_arb]'s injection rate; the
+   rest are finite draws in [-10, 10]. Composed here rather than added to
+   [qcheck_gen.mli] — it has one consumer. *)
+let nan_injected_pair_arb =
+  let open QCheck in
+  let cell =
+    let open Gen in
+    let* roll = int_range 0 19 in
+    if roll = 0 then return Float.nan else float_range (-10.0) 10.0
+  in
+  let gen =
+    let open Gen in
+    let* n = int_range 1 64 in
+    let* xs_a = array_size (return n) cell in
+    let* xs_b = array_size (return n) cell in
+    let* f_idx = int_range 0 (Array.length nan_free_on_finite_fns - 1) in
+    return (xs_a, xs_b, f_idx)
+  in
+  let count_nan xs =
+    Array.fold_left (fun n x -> if Float.is_nan x then n + 1 else n) 0 xs
+  in
+  make
+    ~print:(fun (xs_a, xs_b, f_idx) ->
+      Printf.sprintf "<len=%d nan_left=%d nan_right=%d f=%s>"
+        (Array.length xs_a) (count_nan xs_a) (count_nan xs_b)
+        (fst nan_free_on_finite_fns.(f_idx)))
+    gen
+
+let map2_nan_nan_exactly_at_union_of_input_nans =
+  QCheck.Test.make ~count:200
+    ~name:"map2_nan_nan_exactly_at_union_of_input_nans" nan_injected_pair_arb
+    (fun (xs_a, xs_b, f_idx) ->
+      let f = snd nan_free_on_finite_fns.(f_idx) in
+      let a = Qcheck_gen.make_series_from_floats ~freq:Cairos.Freq.Day xs_a in
+      let b = Qcheck_gen.make_series_from_floats ~freq:Cairos.Freq.Day xs_b in
+      match Cairos.Align.align ~strategy:`Inner a b with
+      | Error _ ->
+          (* Unreachable: both series share an identical index by construction,
+             so Inner has the full overlap and never yields an empty result. *)
+          failwith
+            "unreachable: identical indices guarantee a non-empty intersection"
+      | Ok aligned ->
+          let actual =
+            Nx.to_array
+              (Cairos.Series.values (Cairos.Align.map2_nan aligned ~f))
+          in
+          let plain =
+            Nx.to_array (Cairos.Series.values (Cairos.Align.map2 f aligned))
+          in
+          (* The oracle is derived from the contract, not from [map2]: at a
+             gated position the contract says NaN, elsewhere it says [f] applied
+             to the drawn inputs. Reusing [plain] here would let a shared defect
+             in the align/to_array plumbing agree with itself. *)
+          let expected =
+            Array.init (Array.length xs_a) (fun i ->
+                if Float.is_nan xs_a.(i) || Float.is_nan xs_b.(i) then Float.nan
+                else f xs_a.(i) xs_b.(i))
+          in
+          (* The comparator's NaN branches carry these assertions: both-NaN must
+             compare equal for the gated positions, one-sided-NaN must compare
+             unequal so a wrongly-gated or wrongly-passed position fails. Both
+             branches are pinned in test_align.ml. *)
+          let matches_contract =
+            Array.length actual = Array.length expected
+            && Array.for_all2
+                 (Qcheck_gen.float_approx_equal ~tol:1e-12)
+                 expected actual
+          in
+          (* The second clause: [map2_nan] agrees with [map2] at the ungated
+             positions, where the two must be indistinguishable. Compared
+             [actual] against [plain] directly — comparing the oracle against
+             [plain] would assert a fact about the oracle instead. Only the
+             gated positions are skipped ([Float.is_nan x] where [x] is
+             [actual]); a NaN [plain] produces at an ungated position must
+             still fail, so it is not skipped. *)
+          let agrees_with_map2_off_gate =
+            Array.length actual = Array.length plain
+            && Array.for_all2
+                 (fun x y ->
+                   Float.is_nan x
+                   || Qcheck_gen.float_approx_equal ~tol:1e-12 x y)
+                 actual plain
+          in
+          matches_contract && agrees_with_map2_off_gate)
+
 let () =
   Qcheck_gen.pin_seed_from_env ();
   let tests =
@@ -116,6 +220,7 @@ let () =
         left_length_equals_left_input;
         identical_indices_collapse_strategies;
         inner_index_strictly_monotonic;
+        map2_nan_nan_exactly_at_union_of_input_nans;
       ]
   in
   Alcotest.run "Align.props" [ ("property", tests) ]

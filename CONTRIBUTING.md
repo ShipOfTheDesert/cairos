@@ -231,7 +231,16 @@ handle.
 - `Cairos.Align.align` — may produce an empty index.
 - `Cairos.Resample.resample` — target frequency must be lower than source.
 - `Cairos.Frame.of_series` — duplicate column names and index mismatch.
+- `Cairos_engine.Backtest.run` — entrypoint validation of caller-supplied
+  frames and rebalance calendar.
 - The entire `cairos_io` public surface — CSV parsing is a runtime boundary.
+
+Every one of these returns a **structured variant** on its error side, never a
+`string`: one variant per failure mode, payloads carrying the offending values,
+an aggregate whose non-emptiness is invariant typed `Cairos.Nonempty.t` rather
+than `list`, and a sibling `err_to_string` holding all the prose. Message text
+is not part of the contract — assert on variants, never on substrings. See
+`docs/adrs/0061-structured-error-types-at-library-boundaries.md`.
 
 Chain with `let*`. Do not unwrap with `Result.get_ok` outside tests.
 

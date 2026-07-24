@@ -161,8 +161,10 @@ val float_approx_equal : tol:float -> float -> float -> bool
     both operands first (both-NaN ⇒ equal, one-NaN ⇒ unequal), then
     short-circuit on exact equality so same-sign infinities compare equal, then
     check [|a-b| <= tol *. max 1.0 (max |a| |b|)]. Lifted verbatim from
-    [test_series_scan.ml]; both NaN branches and the infinity branches are
-    pinned by the existing comparator unit tests in that file. *)
+    [test_series_scan.ml], which keeps its own local copy — the comparator unit
+    tests in that file pin that copy, not this one. Both NaN branches of
+    {e this} function are pinned by [float_approx_equal_both_nan_are_equal] and
+    [float_approx_equal_one_sided_nan_is_unequal] in [test_align.ml]. *)
 
 val float_arrays_bitwise_equal : float array -> float array -> bool
 (** Same length and [Int64.bits_of_float]-equal at every position. Used for

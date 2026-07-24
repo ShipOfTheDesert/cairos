@@ -2,3 +2,9 @@
  (name qcheck_gen)
  (modules qcheck_gen)
  (libraries cairos qcheck-core qcheck-alcotest nx ptime bigarray unix))
+
+(test
+ (name test_qcheck_gen)
+ (package cairos)
+ (modules test_qcheck_gen)
+ (libraries qcheck_gen alcotest))

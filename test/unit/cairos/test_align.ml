@@ -314,6 +314,156 @@ let map2_propagates_nan () =
       Alcotest.(check bool) "sum 1 is nan" true (Float.is_nan vs.(1));
       Alcotest.(check (float 0.001)) "sum 2" 33.0 vs.(2)
 
+(* --- map2_nan --- *)
+
+let gt_indicator a b = if a > b then 1.0 else 0.0
+
+let aligned_inner_exn left right =
+  match Cairos.Align.align ~strategy:`Inner left right with
+  | Error e -> Alcotest.fail e
+  | Ok aligned -> aligned
+
+let map2_nan_propagates_left_nan () =
+  let left =
+    Test_helpers.make_daily_series
+      [| "2024-01-01"; "2024-01-02"; "2024-01-03" |]
+      [| 1.0; Float.nan; 300.0 |]
+  in
+  let right =
+    Test_helpers.make_daily_series
+      [| "2024-01-01"; "2024-01-02"; "2024-01-03" |]
+      [| 10.0; 20.0; 30.0 |]
+  in
+  let aligned = aligned_inner_exn left right in
+  let vs =
+    Nx.to_array
+      (Cairos.Series.values (Cairos.Align.map2_nan aligned ~f:gt_indicator))
+  in
+  Alcotest.(check (float 0.001)) "clean 0" 0.0 vs.(0);
+  Alcotest.(check bool) "left nan propagates" true (Float.is_nan vs.(1));
+  Alcotest.(check (float 0.001)) "clean 2" 1.0 vs.(2)
+
+let map2_nan_propagates_right_nan () =
+  let left =
+    Test_helpers.make_daily_series
+      [| "2024-01-01"; "2024-01-02"; "2024-01-03" |]
+      [| 1.0; 2.0; 300.0 |]
+  in
+  let right =
+    Test_helpers.make_daily_series
+      [| "2024-01-01"; "2024-01-02"; "2024-01-03" |]
+      [| 10.0; Float.nan; 30.0 |]
+  in
+  let aligned = aligned_inner_exn left right in
+  let vs =
+    Nx.to_array
+      (Cairos.Series.values (Cairos.Align.map2_nan aligned ~f:gt_indicator))
+  in
+  Alcotest.(check (float 0.001)) "clean 0" 0.0 vs.(0);
+  Alcotest.(check bool) "right nan propagates" true (Float.is_nan vs.(1));
+  Alcotest.(check (float 0.001)) "clean 2" 1.0 vs.(2)
+
+let map2_nan_propagates_both_nan () =
+  let left =
+    Test_helpers.make_daily_series
+      [| "2024-01-01"; "2024-01-02" |]
+      [| Float.nan; 2.0 |]
+  in
+  let right =
+    Test_helpers.make_daily_series
+      [| "2024-01-01"; "2024-01-02" |]
+      [| Float.nan; 20.0 |]
+  in
+  let aligned = aligned_inner_exn left right in
+  let vs =
+    Nx.to_array
+      (Cairos.Series.values (Cairos.Align.map2_nan aligned ~f:gt_indicator))
+  in
+  Alcotest.(check bool) "both nan propagates" true (Float.is_nan vs.(0));
+  Alcotest.(check (float 0.001)) "clean 1" 0.0 vs.(1)
+
+let map2_nan_matches_map2_on_clean_input () =
+  let left =
+    Test_helpers.make_daily_series
+      [| "2024-01-01"; "2024-01-02"; "2024-01-03" |]
+      [| 1.0; 2.0; 3.0 |]
+  in
+  let right =
+    Test_helpers.make_daily_series
+      [| "2024-01-01"; "2024-01-02"; "2024-01-03" |]
+      [| 10.0; 20.0; 30.0 |]
+  in
+  let aligned = aligned_inner_exn left right in
+  let plain =
+    Nx.to_array (Cairos.Series.values (Cairos.Align.map2 ( +. ) aligned))
+  in
+  let nan_aware =
+    Nx.to_array (Cairos.Series.values (Cairos.Align.map2_nan aligned ~f:( +. )))
+  in
+  Alcotest.(check (array (float 0.001)))
+    "identical on nan-free input" plain nan_aware
+
+let map2_nan_comparison_yields_nan_not_zero () =
+  (* The logged defect: a fill-produced NaN must read as undefined, not flat. *)
+  let left =
+    Test_helpers.make_daily_series
+      [| "2024-01-01"; "2024-01-02"; "2024-01-03" |]
+      [| 1.0; 2.0; 3.0 |]
+  in
+  let right =
+    Test_helpers.make_daily_series
+      [| "2024-01-01"; "2024-01-03" |]
+      [| 10.0; 30.0 |]
+  in
+  match Cairos.Align.align ~strategy:`Left left right with
+  | Error e -> Alcotest.fail e
+  | Ok aligned ->
+      let vs =
+        Nx.to_array
+          (Cairos.Series.values (Cairos.Align.map2_nan aligned ~f:gt_indicator))
+      in
+      Alcotest.(check (float 0.001)) "matched 0" 0.0 vs.(0);
+      Alcotest.(check bool) "warmup reads undefined" true (Float.is_nan vs.(1));
+      Alcotest.(check (float 0.001)) "matched 2" 0.0 vs.(2);
+      (* The claim [map2_nan] exists to answer, on the same fixture: under
+         [map2] the fill NaN takes the [else] branch and reads as a confident
+         "flat" rather than as undefined. If this ever stops holding, the
+         justification for [map2_nan] in align.mli has gone stale. *)
+      let under_map2 =
+        Nx.to_array
+          (Cairos.Series.values (Cairos.Align.map2 gt_indicator aligned))
+      in
+      Alcotest.(check (float 0.001))
+        "map2 emits a confident flat at the same warmup position" 0.0
+        under_map2.(1);
+      Alcotest.(check bool)
+        "map2 does not propagate the fill nan" false
+        (Float.is_nan under_map2.(1))
+
+let map2_nan_passes_through_f_produced_nan () =
+  (* Gating is on inputs only: f's own NaN on a clean pair is not intercepted. *)
+  let left =
+    Test_helpers.make_daily_series
+      [| "2024-01-01"; "2024-01-02" |]
+      [| 1.0; 200.0 |]
+  in
+  let right =
+    Test_helpers.make_daily_series
+      [| "2024-01-01"; "2024-01-02" |]
+      [| 10.0; 20.0 |]
+  in
+  let aligned = aligned_inner_exn left right in
+  let vs =
+    Nx.to_array
+      (Cairos.Series.values
+         (Cairos.Align.map2_nan aligned ~f:(fun a b ->
+              if a < b then Float.nan else 0.0)))
+  in
+  Alcotest.(check bool)
+    "f-produced nan passes through" true
+    (Float.is_nan vs.(0));
+  Alcotest.(check (float 0.001)) "f's non-nan branch still applies" 0.0 vs.(1)
+
 (* --- Edge cases --- *)
 
 let inner_empty_left_returns_error () =
@@ -481,6 +631,18 @@ let tests =
     ( "asof_backward_empty_right_all_nan",
       `Quick,
       asof_backward_empty_right_all_nan );
+    ("map2_nan_propagates_left_nan", `Quick, map2_nan_propagates_left_nan);
+    ("map2_nan_propagates_right_nan", `Quick, map2_nan_propagates_right_nan);
+    ("map2_nan_propagates_both_nan", `Quick, map2_nan_propagates_both_nan);
+    ( "map2_nan_matches_map2_on_clean_input",
+      `Quick,
+      map2_nan_matches_map2_on_clean_input );
+    ( "map2_nan_comparison_yields_nan_not_zero",
+      `Quick,
+      map2_nan_comparison_yields_nan_not_zero );
+    ( "map2_nan_passes_through_f_produced_nan",
+      `Quick,
+      map2_nan_passes_through_f_produced_nan );
     ("map2_with_asof_backward", `Quick, map2_with_asof_backward);
     ("inner_identical_timestamps", `Quick, inner_identical_timestamps);
   ]

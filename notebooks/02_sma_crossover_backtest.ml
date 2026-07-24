@@ -113,8 +113,12 @@ let () =
 (* `map2`, which is the only way to compose two series element-wise. *)
 (* *)
 (* During the warmup (either SMA is `NaN`), `NaN > _` is `false` under *)
-(* IEEE 754, so the signal is `0.0` for warmup days — not `NaN`. The *)
-(* strategy is flat during warmup, which is the correct behaviour. *)
+(* IEEE 754, so the signal reads `0.0` for warmup days — not `NaN`. That *)
+(* is a confident "flat" where the honest answer is undefined: `map2` *)
+(* hands NaN straight to the predicate, which takes its `else` branch. *)
+(* `Align.map2_nan` is the NaN-propagating counterpart and is what new *)
+(* code should reach for; this notebook keeps `map2` because it slices *)
+(* the warmup away below, so the two agree on everything it plots. *)
 
 (* %% vscode={"languageId": "ocaml"} *)
 let aligned_smas =
