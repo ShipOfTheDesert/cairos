@@ -31,6 +31,19 @@ runs:
       shell: bash
       run: just pin
 
+    # The runner image's apt index is snapshotted at image-build time. Once
+    # Ubuntu supersedes a revision the old .deb leaves the pool, so opam's
+    # depext step below 404s on files the stale index still lists (krb5,
+    # via libzmq3-dev, 2026-07). Retries cannot help — a missing file 404s
+    # identically every attempt.
+    - name: Refresh apt index
+      uses: nick-fields/retry@v3
+      with:
+        timeout_minutes: 5
+        max_attempts: 3
+        command: sudo apt-get update
+        shell: bash
+
     - name: Install dependencies
       uses: nick-fields/retry@v3
       with:
