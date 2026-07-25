@@ -34,6 +34,15 @@ let make_weekly_series dates values =
       | Error e -> Alcotest.fail e
       | Ok s -> s)
 
+let make_monthly_series dates values =
+  match Cairos.Index.monthly dates with
+  | Error e -> Alcotest.fail (Cairos.Index.err_to_string e)
+  | Ok idx -> (
+      let vals = Nx.create Nx.float64 [| Array.length values |] values in
+      match Cairos.Series.make idx vals with
+      | Error e -> Alcotest.fail e
+      | Ok s -> s)
+
 let frame_get_exn name frame =
   match Cairos.Frame.get name frame with
   | Some s -> s

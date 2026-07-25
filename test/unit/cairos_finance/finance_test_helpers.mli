@@ -11,6 +11,7 @@ val daily_index_of_length : int -> [ `Daily ] Cairos.Index.t
 val hourly_index_of_length : int -> [ `Hour ] Cairos.Index.t
 val minute_index_of_length : int -> [ `Minute ] Cairos.Index.t
 val weekly_index_of_length : int -> [ `Weekly ] Cairos.Index.t
+val monthly_index_of_length : int -> [ `Monthly ] Cairos.Index.t
 
 val make_series :
   'freq Cairos.Index.t ->

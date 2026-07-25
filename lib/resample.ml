@@ -3,12 +3,14 @@ let freq_rank : type a. a Freq.t -> int = function
   | Freq.Hour -> 1
   | Freq.Day -> 2
   | Freq.Week -> 3
+  | Freq.Month -> 4
 
 let freq_name : type a. a Freq.t -> string = function
   | Freq.Minute -> "Minute"
   | Freq.Hour -> "Hour"
   | Freq.Day -> "Day"
   | Freq.Week -> "Week"
+  | Freq.Month -> "Month"
 
 (* A bucket key identifies the calendar period a timestamp belongs to.
    Decomposition from Ptime.t is total (Ptime.to_date_time never fails).
@@ -68,6 +70,14 @@ let bucket_key_of_ptime : type a.
           Error
             (Format.asprintf "internal: failed to compute Monday for %a"
                (Ptime.pp_rfc3339 ()) t))
+  | Freq.Month ->
+      (* Keyed on the calendar (year, month); the day is pinned to 1 so the
+         reconstructed label is the first instant of the calendar month at
+         00:00 UTC. That anchor is synthesised — it need not appear in the
+         source index (the 1st is frequently a non-trading day). Year is part
+         of the key so the same month in different years does not collide. *)
+      let year, month, _day = Ptime.to_date t in
+      Ok { year; month; day = 1; hour = 0 }
 
 (* Reconstruct a Ptime.t from a bucket key. Returns option because
    Ptime.of_date_time validates the date-time tuple. In practice, bucket

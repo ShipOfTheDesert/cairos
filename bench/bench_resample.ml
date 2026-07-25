@@ -1,10 +1,9 @@
 (* Run with: opam exec -- dune exec bench/bench_resample.exe
 
-   Benchmark: Cairos.Resample.resample daily->weekly with [~agg:`Last] on a
-   ~2_500-bar (10-year) daily float64 series.
-
-   Daily->monthly cell deferred — Cairos.Freq.t does not include Month. To be
-   added in the feature that extends Freq.t.
+   Benchmark: Cairos.Resample.resample daily->weekly and daily->monthly, both
+   with [~agg:`Last] on a ~2_500-bar (10-year) daily float64 series. The two
+   cells share one input and differ only in the target frequency, isolating the
+   calendar-bucketing cost of weekly vs monthly.
 
    Prerequisite: this file is only built when cairos's :with-test deps are
    installed (bechamel + bechamel-notty). Run
@@ -22,14 +21,26 @@ let make_input () =
   Bench_fixtures.make_series idx values
 
 (* Setup is hoisted out of [Staged.stage] so the hot loop only measures
-   [Resample.resample]. The same ~2_500-bar input is reused across iterations. *)
+   [Resample.resample]. The same ~2_500-bar input is shared across both cells
+   and reused across iterations; [resample] does not mutate its input. The
+   group name "resample" is prefixed onto each cell by [make_grouped], so the
+   emitted names remain [resample/daily-to-weekly/2500] and
+   [resample/daily-to-monthly/2500]. *)
 let test_resample =
   let s = make_input () in
-  Test.make ~name:"resample/daily-to-weekly/2500"
-    (Staged.stage (fun () ->
-         match Cairos.Resample.resample ~agg:`Last Cairos.Freq.Week s with
-         | Ok _ -> ()
-         | Error _ -> failwith "bench input violates resample contract"))
+  Test.make_grouped ~name:"resample"
+    [
+      Test.make ~name:"daily-to-weekly/2500"
+        (Staged.stage (fun () ->
+             match Cairos.Resample.resample ~agg:`Last Cairos.Freq.Week s with
+             | Ok _ -> ()
+             | Error _ -> failwith "bench input violates resample contract"));
+      Test.make ~name:"daily-to-monthly/2500"
+        (Staged.stage (fun () ->
+             match Cairos.Resample.resample ~agg:`Last Cairos.Freq.Month s with
+             | Ok _ -> ()
+             | Error _ -> failwith "bench input violates resample contract"));
+    ]
 
 let benchmark () =
   let instances =

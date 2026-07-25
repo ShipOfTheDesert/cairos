@@ -1,3 +1,8 @@
+let ptime_exn s =
+  match Ptime.of_rfc3339 s with
+  | Ok (t, _, _) -> t
+  | Error _ -> Alcotest.fail (Printf.sprintf "bad rfc3339: %s" s)
+
 (* --- Frequency transitions (using Last aggregation) --- *)
 
 let daily_to_weekly () =
@@ -343,6 +348,153 @@ let year_boundary_weekly () =
         "boundary is Monday" true
         (Ptime.weekday ts.(0) = `Mon)
 
+(* --- Daily/weekly -> monthly (calendar-month bucketing) --- *)
+
+let daily_to_monthly () =
+  (* Daily bars across January and February 2024 group into two calendar
+     months, each labelled with the first day of the month at 00:00 UTC. *)
+  let s =
+    Test_helpers.make_daily_series
+      [| "2024-01-15"; "2024-01-16"; "2024-01-17"; "2024-02-10"; "2024-02-11" |]
+      [| 1.0; 2.0; 3.0; 4.0; 5.0 |]
+  in
+  match Cairos.Resample.resample ~agg:`Last Cairos.Freq.Month s with
+  | Error e -> Alcotest.fail e
+  | Ok result ->
+      Alcotest.(check int) "2 monthly points" 2 (Cairos.Series.length result);
+      let vs = Nx.to_array (Cairos.Series.values result) in
+      Alcotest.(check (float 0.001)) "Jan last" 3.0 vs.(0);
+      Alcotest.(check (float 0.001)) "Feb last" 5.0 vs.(1);
+      let ts = Cairos.Index.timestamps (Cairos.Series.index result) in
+      Alcotest.(check Test_helpers.ptime_testable)
+        "Jan boundary"
+        (ptime_exn "2024-01-01T00:00:00Z")
+        ts.(0);
+      Alcotest.(check Test_helpers.ptime_testable)
+        "Feb boundary"
+        (ptime_exn "2024-02-01T00:00:00Z")
+        ts.(1)
+
+let daily_to_monthly_year_boundary () =
+  (* January 2024, December 2024, and January 2025 are three distinct
+     buckets. A month-only key (ignoring the year) would collapse the two
+     Januaries into one; the (year, month) key must not. *)
+  let s =
+    Test_helpers.make_daily_series
+      [| "2024-01-15"; "2024-12-15"; "2025-01-15" |]
+      [| 10.0; 20.0; 30.0 |]
+  in
+  match Cairos.Resample.resample ~agg:`Last Cairos.Freq.Month s with
+  | Error e -> Alcotest.fail e
+  | Ok result ->
+      Alcotest.(check int) "3 monthly buckets" 3 (Cairos.Series.length result);
+      let vs = Nx.to_array (Cairos.Series.values result) in
+      Alcotest.(check (float 0.001)) "Jan 2024 last" 10.0 vs.(0);
+      Alcotest.(check (float 0.001)) "Dec 2024 last" 20.0 vs.(1);
+      Alcotest.(check (float 0.001)) "Jan 2025 last" 30.0 vs.(2);
+      let ts = Cairos.Index.timestamps (Cairos.Series.index result) in
+      Alcotest.(check Test_helpers.ptime_testable)
+        "Jan 2024 label"
+        (ptime_exn "2024-01-01T00:00:00Z")
+        ts.(0);
+      Alcotest.(check Test_helpers.ptime_testable)
+        "Dec 2024 label"
+        (ptime_exn "2024-12-01T00:00:00Z")
+        ts.(1);
+      Alcotest.(check Test_helpers.ptime_testable)
+        "Jan 2025 label"
+        (ptime_exn "2025-01-01T00:00:00Z")
+        ts.(2)
+
+let daily_to_monthly_variable_month_length () =
+  (* February 2025 has 28 days while January and March have 31. A
+     fixed-width (e.g. 30-day) bucket implementation passes a single-month
+     case but misplaces these boundaries. *)
+  let s =
+    Test_helpers.make_daily_series
+      [| "2025-01-31"; "2025-02-01"; "2025-02-28"; "2025-03-01"; "2025-03-31" |]
+      [| 1.0; 2.0; 3.0; 4.0; 5.0 |]
+  in
+  match Cairos.Resample.resample ~agg:`Sum Cairos.Freq.Month s with
+  | Error e -> Alcotest.fail e
+  | Ok result ->
+      Alcotest.(check int) "3 monthly buckets" 3 (Cairos.Series.length result);
+      let vs = Nx.to_array (Cairos.Series.values result) in
+      Alcotest.(check (float 0.001)) "Jan sum" 1.0 vs.(0);
+      Alcotest.(check (float 0.001)) "Feb sum" 5.0 vs.(1);
+      Alcotest.(check (float 0.001)) "Mar sum" 9.0 vs.(2);
+      let ts = Cairos.Index.timestamps (Cairos.Series.index result) in
+      Alcotest.(check Test_helpers.ptime_testable)
+        "Feb label"
+        (ptime_exn "2025-02-01T00:00:00Z")
+        ts.(1)
+
+let daily_to_monthly_label_not_in_source () =
+  (* Source begins on the 15th; the January bucket is still labelled
+     2024-01-01, a synthesised anchor absent from the input. *)
+  let s =
+    Test_helpers.make_daily_series
+      [| "2024-01-15"; "2024-01-20"; "2024-02-05" |]
+      [| 1.0; 2.0; 3.0 |]
+  in
+  match Cairos.Resample.resample ~agg:`Last Cairos.Freq.Month s with
+  | Error e -> Alcotest.fail e
+  | Ok result ->
+      Alcotest.(check int) "2 monthly buckets" 2 (Cairos.Series.length result);
+      let ts = Cairos.Index.timestamps (Cairos.Series.index result) in
+      Alcotest.(check Test_helpers.ptime_testable)
+        "synthesised Jan-01 label"
+        (ptime_exn "2024-01-01T00:00:00Z")
+        ts.(0);
+      let vs = Nx.to_array (Cairos.Series.values result) in
+      Alcotest.(check (float 0.001)) "Jan last" 2.0 vs.(0);
+      Alcotest.(check (float 0.001)) "Feb last" 3.0 vs.(1)
+
+let weekly_to_monthly () =
+  (* Weekly (Monday-labelled) bars. The 2024-01-29 week straddles into
+     February, but is bucketed by the month of its own label — January. *)
+  let s =
+    Test_helpers.make_weekly_series
+      [|
+        "2024-01-01";
+        "2024-01-08";
+        "2024-01-15";
+        "2024-01-22";
+        "2024-01-29";
+        "2024-02-05";
+      |]
+      [| 1.0; 2.0; 3.0; 4.0; 5.0; 6.0 |]
+  in
+  match Cairos.Resample.resample ~agg:`Last Cairos.Freq.Month s with
+  | Error e -> Alcotest.fail e
+  | Ok result ->
+      Alcotest.(check int) "2 monthly buckets" 2 (Cairos.Series.length result);
+      let vs = Nx.to_array (Cairos.Series.values result) in
+      Alcotest.(check (float 0.001))
+        "Jan last (incl. straddling week)" 5.0 vs.(0);
+      Alcotest.(check (float 0.001)) "Feb last" 6.0 vs.(1);
+      let ts = Cairos.Index.timestamps (Cairos.Series.index result) in
+      Alcotest.(check Test_helpers.ptime_testable)
+        "Jan label"
+        (ptime_exn "2024-01-01T00:00:00Z")
+        ts.(0);
+      Alcotest.(check Test_helpers.ptime_testable)
+        "Feb label"
+        (ptime_exn "2024-02-01T00:00:00Z")
+        ts.(1)
+
+let rejects_monthly_to_weekly () =
+  (* Monthly is the coarsest frequency (rank 4); Monthly -> Weekly is an
+     upsample and must be rejected. *)
+  let s =
+    Test_helpers.make_monthly_series
+      [| "2024-01-01"; "2024-02-01"; "2024-03-01" |]
+      [| 1.0; 2.0; 3.0 |]
+  in
+  match Cairos.Resample.resample ~agg:`Last Cairos.Freq.Week s with
+  | Ok _ -> Alcotest.fail "expected Error for monthly -> weekly upsample"
+  | Error _ -> ()
+
 (* --- Test list --- *)
 
 let tests =
@@ -369,6 +521,16 @@ let tests =
     ("sparse_data_skips_empty_buckets", `Quick, sparse_data_skips_empty_buckets);
     ("week_53_boundary", `Quick, week_53_boundary);
     ("year_boundary_weekly", `Quick, year_boundary_weekly);
+    ("daily_to_monthly", `Quick, daily_to_monthly);
+    ("daily_to_monthly_year_boundary", `Quick, daily_to_monthly_year_boundary);
+    ( "daily_to_monthly_variable_month_length",
+      `Quick,
+      daily_to_monthly_variable_month_length );
+    ( "daily_to_monthly_label_not_in_source",
+      `Quick,
+      daily_to_monthly_label_not_in_source );
+    ("weekly_to_monthly", `Quick, weekly_to_monthly);
+    ("rejects_monthly_to_weekly", `Quick, rejects_monthly_to_weekly);
   ]
 
 let () = Alcotest.run "Resample" [ ("Resample", tests) ]

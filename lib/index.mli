@@ -43,6 +43,12 @@ val hourly : string array -> ([ `Hour ] t, err) result
 val weekly : string array -> ([ `Weekly ] t, err) result
 (** Construct a weekly-frequency index. *)
 
+val monthly : string array -> ([ `Monthly ] t, err) result
+(** Construct a monthly-frequency index. Timestamps need not be aligned to the
+    first of the month — like {!weekly}, which does not require Mondays. Month
+    alignment is a property of {!Resample.resample}'s output, not of the index.
+*)
+
 (** {1 Float constructor}
 
     Construct from Unix float timestamps. Timestamps must be strictly

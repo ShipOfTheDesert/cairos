@@ -23,6 +23,9 @@ let minute_index_of_length n =
 let weekly_index_of_length n =
   index_of_length ~freq:Cairos.Freq.Week ~step:604_800.0 n
 
+let monthly_index_of_length n =
+  index_of_length ~freq:Cairos.Freq.Month ~step:2_592_000.0 n
+
 let make_series idx values =
   let n = Array.length values in
   let nx = Nx.create Nx.float64 [| n |] values in

@@ -107,6 +107,13 @@ let ann_factor_weekly () =
     (expected_ann ~factor:52.0)
     (Cairos_finance.annualised_return s)
 
+let monthly_annualisation_factor_is_12 () =
+  let s = make_series (monthly_index_of_length 2) single_return in
+  Alcotest.(check (float 0.0))
+    "Month → factor 12.0"
+    (expected_ann ~factor:12.0)
+    (Cairos_finance.annualised_return s)
+
 (* === annualised_vol — degenerate inputs === *)
 
 let vol_empty_is_nan () =
@@ -207,6 +214,8 @@ let () =
           Alcotest.test_case "Hour → 1638" `Quick ann_factor_hourly;
           Alcotest.test_case "Minute → 98280" `Quick ann_factor_minute;
           Alcotest.test_case "Week → 52" `Quick ann_factor_weekly;
+          Alcotest.test_case "Month → 12" `Quick
+            monthly_annualisation_factor_is_12;
         ] );
       ( "annualised_vol",
         [
