@@ -24,7 +24,7 @@ val annualised_return : ('freq, (float, 'b) Nx.t) Cairos.Series.t -> float
     Formula: [(1 + cumulative_return) ** (annualization_factor / n) - 1] where
     [n] is the number of non-NaN return periods and [annualization_factor] is
     derived from the series frequency (Day→252, Hour→1638, Minute→98280,
-    Week→52).
+    Week→52, Month→12).
 
     NaN values are excluded from both the cumulative return calculation and the
     period count [n]. If [n = 0] (empty or all-NaN), returns [nan].
@@ -37,7 +37,7 @@ val annualised_vol : ('freq, (float, 'b) Nx.t) Cairos.Series.t -> float
 
     Formula: [std(returns, ddof=1) * sqrt(annualization_factor)] over the
     non-NaN elements of the series, where [annualization_factor] is derived from
-    the series frequency (Day→252, Hour→1638, Minute→98280, Week→52).
+    the series frequency (Day→252, Hour→1638, Minute→98280, Week→52, Month→12).
 
     Sample standard deviation (ddof=1) is used to match Pandas [.std()]
     convention. NaN values are skipped (matching {!Cairos.Series.pct_change}

@@ -7,4 +7,4 @@
  (name test_qcheck_gen)
  (package cairos)
  (modules test_qcheck_gen)
- (libraries qcheck_gen alcotest))
+ (libraries qcheck_gen alcotest cairos ptime))

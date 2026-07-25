@@ -3,3 +3,4 @@ type _ t =
   | Minute : [ `Minute ] t
   | Hour : [ `Hour ] t
   | Week : [ `Weekly ] t
+  | Month : [ `Monthly ] t

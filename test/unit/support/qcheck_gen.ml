@@ -3,27 +3,49 @@
 let epoch_2024_01_01_utc = 1_704_067_200.0
 let default_seed = 0xC41A05
 
+(* Calendar-step monthly synthesis for [make_series_from_floats ~freq:Month].
+   Timestamp [i] is the first day of (2020-01 + [i] civil months) at
+   00:00:00 UTC — real civil-month stepping, day-1 anchored, NOT a fixed-seconds
+   proxy: a constant 30- or 91-day step is wrong because civil months vary in
+   length (28-31 days), the same reason the daily->monthly bench avoids it.
+   Day-1 anchoring removes day-clamping edge cases by construction, so every
+   [i] yields a valid date. *)
+let month_start_posix i =
+  let year = 2020 + (i / 12) in
+  let month = 1 + (i mod 12) in
+  match Ptime.of_date_time ((year, month, 1), ((0, 0, 0), 0)) with
+  | Some t -> Ptime.to_float_s t
+  | None ->
+      (* Unreachable: day-01 of a valid (year, month) is always a valid Ptime
+         well within range. Terminated with [failwith] (generator support is
+         exempt from the library result rule), not propagated as a [result]. *)
+      failwith "qcheck_gen: monthly synthesis produced an out-of-range Ptime"
+
 (* Index/series factories — total, generator-safe.
 
-   Locally-abstract [type freq] match on the [Freq.t] GADT for
-   exhaustiveness. *)
+   Locally-abstract [type freq] match on the [Freq.t] GADT for exhaustiveness.
+   Minute/Hour/Day/Week step by a fixed interval from {!epoch_2024_01_01_utc};
+   Month is calendar-step, day-1 anchored from 2020-01 (see
+   [month_start_posix]). *)
 let make_series_from_floats : type freq.
     freq:freq Cairos.Freq.t ->
     float array ->
     (freq, (float, Bigarray.float64_elt) Nx.t) Cairos.Series.t =
  fun ~freq xs ->
-  let bucket_seconds =
+  let ts_at =
     match freq with
-    | Cairos.Freq.Minute -> 60.0
-    | Cairos.Freq.Hour -> 3_600.0
-    | Cairos.Freq.Day -> 86_400.0
-    | Cairos.Freq.Week -> 604_800.0
+    | Cairos.Freq.Minute ->
+        fun i -> epoch_2024_01_01_utc +. (float_of_int i *. 60.0)
+    | Cairos.Freq.Hour ->
+        fun i -> epoch_2024_01_01_utc +. (float_of_int i *. 3_600.0)
+    | Cairos.Freq.Day ->
+        fun i -> epoch_2024_01_01_utc +. (float_of_int i *. 86_400.0)
+    | Cairos.Freq.Week ->
+        fun i -> epoch_2024_01_01_utc +. (float_of_int i *. 604_800.0)
+    | Cairos.Freq.Month -> month_start_posix
   in
   let n = Array.length xs in
-  let ts =
-    Array.init n (fun i ->
-        epoch_2024_01_01_utc +. (float_of_int i *. bucket_seconds))
-  in
+  let ts = Array.init n ts_at in
   (* Unreachable: synthetic strictly-increasing finite POSIX seconds.
      Generators must terminate unreachable [result] branches with
      [failwith], not propagate [result], or QCheck's shrinker mis-reports. *)
@@ -180,6 +202,27 @@ let hourly_finite_float_series_arb =
   make
     ~print:(fun s ->
       Printf.sprintf "<hourly finite series len=%d>" (Cairos.Series.length s))
+    gen
+
+(* Daily series long enough to span many calendar months. Length [40..600]
+   days from the 2024-01-01 epoch reaches ~2 to ~20 distinct months and
+   crosses at least one year boundary at the upper end, so a daily -> monthly
+   downsample produces a non-trivial, variable bucket count. Values are finite
+   ([-1e6, 1e6]); the monthly-resample invariants this feeds are structural
+   (bucket count, month-start labels, monotonicity) and independent of the
+   values. The prefix-truncation [shrink_daily_series] keeps a failing case
+   daily and epoch-anchored while shrinking its span. *)
+let daily_multi_month_series_arb =
+  let open QCheck in
+  let gen =
+    Gen.map
+      (make_series_from_floats ~freq:Cairos.Freq.Day)
+      (Gen.array_size (Gen.int_range 40 600) (Gen.float_range (-1e6) 1e6))
+  in
+  make ~shrink:shrink_daily_series
+    ~print:(fun s ->
+      Printf.sprintf "<daily multi-month series len=%d>"
+        (Cairos.Series.length s))
     gen
 
 (* Paired-series arbitraries *)

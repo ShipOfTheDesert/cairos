@@ -12,6 +12,10 @@ let format_timestamp (type freq) (freq : freq Cairos.Freq.t) (ts : Ptime.t) :
   | Cairos.Freq.Day
   | Cairos.Freq.Week ->
       Printf.sprintf "%04d-%02d-%02d" y m d
+  | Cairos.Freq.Month ->
+      (* Monthly labels are day-01 anchored, so rendering the constant [-01]
+         suffix is noise: drop the day component and show [YYYY-MM]. *)
+      Printf.sprintf "%04d-%02d" y m
   | Cairos.Freq.Hour
   | Cairos.Freq.Minute ->
       Printf.sprintf "%04d-%02d-%02d %02d:%02d" y m d hh mm

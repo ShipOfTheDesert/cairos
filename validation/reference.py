@@ -259,6 +259,69 @@ def frame_zscore(rows: list[list[float]], columns: list[str]) -> pd.DataFrame:
     return result
 
 
+# --- Daily->monthly resample fixtures ------------------------------------------
+#
+# Oracle for the monthly resample (Freq.Month) Layer 2 cross-validation of
+# Cairos.Resample.resample from daily to monthly. Authored independently from
+# the stated bucketing convention below, NOT transcribed from lib/resample.ml,
+# so the oracle can catch an implementation bug rather than mirror one:
+#
+#   Monthly buckets are keyed on the timestamp's calendar (year, month) and
+#   labelled bucket-start — the label is the FIRST instant of the calendar
+#   month at 00:00 UTC, synthesised (the anchor need not appear in the source
+#   index). Empty buckets are omitted; the output length equals the number of
+#   non-empty (year, month) buckets.
+#
+# Pandas mapping: resample('MS') anchors each bucket to the month start, which
+# matches the bucket-start convention (the same anchoring Week already uses,
+# verified against the Weekly 'W-MON' precedent). Aggregations exercised: 'sum'
+# and 'last' (order-sensitive, so an out-of-order bucket reduction is caught
+# that 'sum' cannot see).
+#
+# EMPTY-BUCKET CONTRACT (encoded in the oracle, not the comparator):
+# pandas emits every calendar month in the range, including zero-observation
+# ones; the Cairos contract omits empty buckets. The oracle drops periods by
+# OBSERVATION COUNT (resample(...).count() == 0), never dropna(): dropna would
+# also delete a legitimately-NaN aggregate (a 'last' over a bucket whose final
+# observation is NaN), conflating "no observations" with "NaN observation". The
+# committed business-day fixture happens to have an observation in every month,
+# so the guard is inert here, but it encodes the contract regardless.
+
+RESAMPLE_DAILY_SEED = 62
+RESAMPLE_START = "2024-01-02"
+RESAMPLE_END = "2025-03-14"
+
+
+def resample_daily_input() -> pd.Series:
+    # Business days Mon-Fri (bdate_range, no holiday calendar) spanning
+    # leap February 2024, every 28/29/30/31-day month length, the
+    # Dec 2024 -> Jan 2025 year boundary, and a final month (March 2025)
+    # truncated mid-month at 2025-03-14. Values from a fixed-seed RNG so the
+    # fixture is deterministic under the pinned uv.lock.
+    dates = pd.bdate_range(RESAMPLE_START, RESAMPLE_END)
+    rng = np.random.default_rng(RESAMPLE_DAILY_SEED)
+    values = rng.normal(0.0, 1.0, len(dates))
+    return pd.Series(values, index=dates)
+
+
+def resample_monthly_reference(daily: pd.Series, agg: str) -> pd.Series:
+    # agg in {"sum", "last"}. Bucket-start anchoring via resample('MS').
+    resampled = daily.resample("MS").agg(agg)
+    counts = daily.resample("MS").count()
+    return resampled[counts > 0]
+
+
+def write_resample_series_csv(name: str, series: pd.Series) -> None:
+    # timestamp,value shape with full RFC 3339 labels (T00:00:00Z) so the
+    # OCaml harness parses them via Ptime.of_rfc3339 and the synthesised
+    # month-start anchor is explicit.
+    path = FIXTURES / f"{name}.csv"
+    with open(path, "w") as f:
+        f.write("timestamp,value\n")
+        for ts, v in series.items():
+            f.write(f"{_ts_str(ts)},{_format_cell(v)}\n")
+
+
 # --- Backtest engine fixtures --------------------------------------------------
 #
 # Encodes the seven-step rebalance loop, the mark-to-market formula (extended
@@ -557,7 +620,7 @@ def _check_backtest_invariants(
 ) -> None:
     # Layer 3 invariants applied to the Pandas
     # output. If any of these fail the Python implementation is wrong and
-    # must be fixed before Task 6 lands.
+    # must be fixed before the fixtures are trusted.
     assert equity_curve.iloc[0] == 1.0, (
         f"equity_curve[0] must be 1.0, got {equity_curve.iloc[0]!r}"
     )
@@ -619,6 +682,17 @@ def main():
     write_backtest_series_csv("backtest_equity_curve", equity_curve)
     write_backtest_series_csv("backtest_returns", returns)
     write_backtest_trades_csv("backtest_trades", trades)
+
+    daily = resample_daily_input()
+    write_resample_series_csv("resample_daily_input", daily)
+    write_resample_series_csv(
+        "resample_monthly_sum_expected",
+        resample_monthly_reference(daily, "sum"),
+    )
+    write_resample_series_csv(
+        "resample_monthly_last_expected",
+        resample_monthly_reference(daily, "last"),
+    )
 
 
 if __name__ == "__main__":

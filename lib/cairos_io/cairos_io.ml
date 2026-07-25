@@ -144,6 +144,7 @@ let dispatch_index (type freq) (f : freq Cairos.Freq.t) (ts : string array) :
   | Cairos.Freq.Minute -> Cairos.Index.minute ts
   | Cairos.Freq.Hour -> Cairos.Index.hourly ts
   | Cairos.Freq.Week -> Cairos.Index.weekly ts
+  | Cairos.Freq.Month -> Cairos.Index.monthly ts
 
 (* Translate an [Index.err] to the cairos_io [err] carrying a CSV line
    number. CSV line = 0-indexed position + (1 if no header else 2). *)

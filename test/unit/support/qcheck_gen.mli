@@ -29,9 +29,13 @@ val make_series_from_floats :
   float array ->
   ('freq, (float, Bigarray.float64_elt) Nx.t) Cairos.Series.t
 (** [make_series_from_floats ~freq xs] builds a synthetic series at frequency
-    [freq] starting at {!epoch_2024_01_01_utc}. Bucket interval is selected by
-    locally-abstract [type freq] match on the [Freq.t] GADT (Minute=60s,
-    Hour=3600s, Daily=86400s, Weekly=604800s). *)
+    [freq]. Timestamp [i] is selected by locally-abstract [type freq] match on
+    the [Freq.t] GADT. Minute/Hour/Day/Week step by a fixed interval from
+    {!epoch_2024_01_01_utc} (Minute=60s, Hour=3600s, Daily=86400s,
+    Weekly=604800s). Monthly is calendar-step: timestamp [i] is the first day of
+    (2020-01 + [i] civil months) at 00:00 UTC, day-1 anchored — real civil-month
+    stepping, not a fixed-seconds proxy, and from a different origin than the
+    fixed-interval frequencies. *)
 
 (** {1 Single-series arbitraries} *)
 
@@ -81,6 +85,17 @@ val hourly_finite_float_series_arb :
   QCheck.arbitrary
 (** Higher-frequency variant for [Resample] downsampling properties. Length
     [2..96]. *)
+
+val daily_multi_month_series_arb :
+  ([ `Daily ], (float, Bigarray.float64_elt) Nx.t) Cairos.Series.t
+  QCheck.arbitrary
+(** Daily series of length [40..600] from the {!epoch_2024_01_01_utc} epoch,
+    finite values in [[-1e6, 1e6]]. Spans ~2 to ~20 distinct calendar months and
+    crosses at least one year boundary at the upper end, so daily -> monthly
+    downsampling yields a variable, non-trivial bucket count. For [Resample]'s
+    monthly bucket-count / month-start-label / monotonicity property. Shrinks
+    via {!shrink_daily_series} (prefix truncation preserves daily,
+    epoch-anchored shape). *)
 
 (** {1 Paired-series arbitraries} *)
 

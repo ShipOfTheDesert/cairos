@@ -1,6 +1,6 @@
 import 'notebooks/notebooks.just'
 
-default: pin build test fmt lint validate notebooks
+default: build test fmt lint validate notebooks
 
 pin:
     #!/usr/bin/env bash
@@ -104,6 +104,7 @@ validate-generate:
 validate-check:
     opam exec -- dune exec test/unit/cairos_finance/cross_validate.exe
     opam exec -- dune exec test/unit/cairos/cross_validate_frame.exe
+    opam exec -- dune exec test/unit/cairos/cross_validate_resample.exe
     opam exec -- dune exec test/unit/cairos_engine/cross_validate.exe
 
 validate:

@@ -68,6 +68,10 @@ let weekly strings =
   let* ts = parse_timestamps strings in
   make_index Freq.Week ts
 
+let monthly strings =
+  let* ts = parse_timestamps strings in
+  make_index Freq.Month ts
+
 let of_unix_floats freq floats =
   let len = Array.length floats in
   let ts = Array.make len Ptime.epoch in

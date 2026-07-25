@@ -171,6 +171,35 @@ let of_unix_floats_empty_array () =
   | Error e -> Alcotest.fail (Cairos.Index.err_to_string e)
   | Ok idx -> Alcotest.(check int) "length is 0" 0 (Cairos.Index.length idx)
 
+let monthly_index_accepts_valid_timestamps () =
+  match Cairos.Index.monthly [| "2024-01-01"; "2024-02-01"; "2024-03-01" |] with
+  | Error e -> Alcotest.fail (Cairos.Index.err_to_string e)
+  | Ok idx ->
+      Alcotest.(check int) "length is 3" 3 (Cairos.Index.length idx);
+      let ts = Cairos.Index.timestamps idx in
+      let expected_0 =
+        match Ptime.of_rfc3339 "2024-01-01T00:00:00Z" with
+        | Ok (t, _, _) -> t
+        | Error _ -> Alcotest.fail "test setup: bad date"
+      in
+      Alcotest.(check ptime_testable) "first timestamp" expected_0 ts.(0)
+
+let monthly_index_rejects_non_monotonic () =
+  match Cairos.Index.monthly [| "2024-03-01"; "2024-01-01" |] with
+  | Ok _ -> Alcotest.fail "expected Error for non-monotonic timestamps"
+  | Error e ->
+      Alcotest.(check string)
+        "descending" "timestamps not strictly monotonic at position 1"
+        (Cairos.Index.err_to_string e)
+
+let monthly_index_accepts_unaligned_timestamps () =
+  (* Mirror of [weekly], which does not require Mondays: [monthly] does not
+     require the 1st. Mid-month dates parse without error — month alignment is
+     a property of [resample]'s output, not of the index type. *)
+  match Cairos.Index.monthly [| "2024-01-15"; "2024-02-20"; "2024-03-10" |] with
+  | Error e -> Alcotest.fail (Cairos.Index.err_to_string e)
+  | Ok idx -> Alcotest.(check int) "length is 3" 3 (Cairos.Index.length idx)
+
 let tests =
   [
     ("daily_parses_valid_iso8601", `Quick, daily_parses_valid_iso8601);
@@ -204,6 +233,15 @@ let tests =
     ( "of_unix_floats_rejects_non_monotonic",
       `Quick,
       of_unix_floats_rejects_non_monotonic );
+    ( "monthly_index_accepts_valid_timestamps",
+      `Quick,
+      monthly_index_accepts_valid_timestamps );
+    ( "monthly_index_rejects_non_monotonic",
+      `Quick,
+      monthly_index_rejects_non_monotonic );
+    ( "monthly_index_accepts_unaligned_timestamps",
+      `Quick,
+      monthly_index_accepts_unaligned_timestamps );
   ]
 
 let () = Alcotest.run "Index" [ ("Index", tests) ]

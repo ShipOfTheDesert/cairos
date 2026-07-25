@@ -10,6 +10,7 @@ let annualization_factor (type freq) (f : freq Cairos.Freq.t) : float =
   | Cairos.Freq.Hour -> 1638.0
   | Cairos.Freq.Minute -> 98280.0
   | Cairos.Freq.Week -> 52.0
+  | Cairos.Freq.Month -> 12.0
 
 let cumulative_return (returns : ('freq, (float, 'b) Nx.t) Cairos.Series.t) :
     float =
