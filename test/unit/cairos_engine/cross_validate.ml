@@ -21,7 +21,7 @@
    hard-coded and must match
    [validation/reference.py:BACKTEST_REBALANCE_BAR_INDICES =
     list(range(2, 50, 5))]. There is no separate rebalance fixture; the
-   schedule is encoded as bar indices on both sides per Task 5 reflection. *)
+   schedule is encoded as bar indices on both sides. *)
 
 let fixture_dir = "validation/fixtures"
 let tolerance = 1e-10

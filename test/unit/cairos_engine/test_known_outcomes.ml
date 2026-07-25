@@ -270,11 +270,11 @@ let always_long_equity_curve_matches_compounded_return () =
 
        We assert only the equity curve and the trade fields
        (timestamps, prices, holding_period_bars) for this test.
-       The per-trade [pnl] is a downstream concern that
-       Task 3 must reconcile against the equity-trade identity
+       The per-trade [pnl] is a downstream concern reconciled
+       against the equity-trade identity
        [sum(pnl) +. 1.0 = equity.(N-1)]; that identity is checked
        in Test 1 (single-trade) and as a Layer 3 invariant
-       [trade_pnl_sum_plus_one_equals_final_equity] (Task 4). *)
+       [trade_pnl_sum_plus_one_equals_final_equity]. *)
 
 let alternating_long_short_pnl_matches_analytical () =
   let dates =
