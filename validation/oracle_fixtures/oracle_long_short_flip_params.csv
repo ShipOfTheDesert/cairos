@@ -1,0 +1,4 @@
+key,value
+commission,0.001
+slippage,0.00050000000000000001
+rebalance_bars,1;5

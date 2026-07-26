@@ -1,6 +1,12 @@
 import 'notebooks/notebooks.just'
 
-default: build test fmt lint validate notebooks
+# `validate` runs last so the three-way oracle comparison tables are the final
+# thing on screen. `notebooks` emits several hundred lines of Jupyter chatter
+# and four "Killed by signal" kernel-teardown tracebacks, so anything printed
+# before it is effectively invisible. The cost is that a validation failure now
+# surfaces after the notebook run rather than before it; `just validate` on its
+# own is the fast path while iterating.
+default: build test fmt lint notebooks validate
 
 pin:
     #!/usr/bin/env bash
@@ -106,6 +112,14 @@ validate-check:
     opam exec -- dune exec test/unit/cairos/cross_validate_frame.exe
     opam exec -- dune exec test/unit/cairos/cross_validate_resample.exe
     opam exec -- dune exec test/unit/cairos_engine/cross_validate.exe
+    # Reads the COMMITTED fixtures under validation/oracle_fixtures/ and runs the
+    # engine in-process. Needs no Python, no vectorbt and no nautilus_trader —
+    # which is why it belongs here while the three uv scripts that WRITE those
+    # fixtures stay in the opt-in validate-oracle. Without this line nothing in
+    # the gate ever checks the engine against the two third-party references,
+    # and an engine change would drift from them silently until someone
+    # remembered to run the opt-in recipe. Costs ~0.03s.
+    opam exec -- dune exec test/unit/cairos_engine/cross_validate_oracles.exe
 
 validate:
     #!/usr/bin/env bash
@@ -113,3 +127,42 @@ validate:
     command -v uv >/dev/null || { echo "uv not installed, skipping validation"; exit 0; }
     just validate-generate
     just validate-check
+
+# Opt-in REGENERATION of the third-party oracle fixtures. What is opt-in is
+# running the two oracles, not comparing against them: the comparison binary is
+# the last line of `validate-check` and therefore runs in `default` and in CI on
+# every change. This recipe is what rewrites the committed fixtures that
+# comparison reads.
+#
+# The two oracles pull heavyweight third-party runtimes (vectorbt resolves ~59
+# packages including numba and LLVM) and stay out of the gate for that reason —
+# unrelated upstream breakage in either must not be able to redden a per-PR run.
+# Nothing else about them is expensive: the comparison itself is ~0.03s and needs
+# neither dependency, since the fixtures are committed.
+#
+# Unlike `validate`, a missing `uv` fails rather than skipping: this recipe is
+# only ever run on purpose, so silently doing nothing would be the wrong answer.
+validate-oracle:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    command -v uv >/dev/null || {
+        echo "validate-oracle: uv is required to run the oracles. Install it with:" >&2
+        echo "    curl -LsSf https://astral.sh/uv/install.sh | sh" >&2
+        exit 2
+    }
+    uv run validation/oracle_scenarios.py
+    uv run validation/vectorbt_oracle.py
+    uv run validation/nautilus_oracle.py
+    # The fixtures under validation/oracle_fixtures/ are committed, and the three
+    # scripts above have just overwritten them in place. If a regenerated fixture
+    # differs from the committed one, the comparison that follows would run on
+    # the new numbers and pass, leaving the drift invisible until someone
+    # noticed the dirty worktree. Report it here instead. Not a hard failure:
+    # regenerating after a deliberate scenario change is exactly how these
+    # fixtures get updated, and the operator is the one who knows which it is.
+    if ! git diff --quiet -- validation/oracle_fixtures/; then
+        echo "validate-oracle: regenerated fixtures differ from the committed ones:" >&2
+        git diff --stat -- validation/oracle_fixtures/ >&2
+        echo "validate-oracle: intended? commit them. Not intended? git checkout -- validation/oracle_fixtures/" >&2
+    fi
+    opam exec -- dune exec test/unit/cairos_engine/cross_validate_oracles.exe

@@ -13,14 +13,9 @@
 
 open Cairos
 
-let fixture_dir = "validation/fixtures"
-
-let die_tooling fmt =
-  Printf.ksprintf
-    (fun s ->
-      prerr_endline ("cross_validate_frame: " ^ s);
-      exit 2)
-    fmt
+let binary = "cross_validate_frame"
+let fixture_dir = Validate_support.generated_fixture_dir
+let die_tooling fmt = Validate_support.die_tooling ~binary fmt
 
 let read_frame_fixture ~path : [ `Daily ] Frame.t =
   match Cairos_io.frame_of_csv ~freq:Freq.Day path with

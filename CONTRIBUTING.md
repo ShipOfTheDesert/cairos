@@ -110,6 +110,106 @@ staged thunk contains only the operation under measurement. Placing setup
 inside the staged thunk causes every measured iteration to rebuild the input,
 polluting `time/run` and the allocation columns with setup cost.
 
+### Cross-validation harnesses
+
+Each package's Layer 2 comparison lives in an `(executable)`, never a `(test)`,
+so `dune runtest` never depends on a fixture-generating toolchain. They run from
+`just validate-check` (via `just validate`, which is part of `just`) and are:
+
+```
+test/unit/cairos_finance/cross_validate.ml    metrics vs Pandas
+test/unit/cairos/cross_validate_frame.ml      Frame rank / zscore vs Pandas
+test/unit/cairos/cross_validate_resample.ml   daily -> monthly vs Pandas
+test/unit/cairos_engine/cross_validate.ml     engine vs the clean-room reference
+test/unit/cairos_engine/cross_validate_oracles.ml   engine vs two third-party oracles
+```
+
+The last one reads **committed** fixtures rather than regenerated ones, so it
+needs no Python and runs in the gate like the rest; only the scripts that write
+those fixtures are opt-in. It always prints all three systems' equity paths bar
+by bar after its verdict — Markdown, with the columns
+`validation/discrepancies/TEMPLATE.md` expects, so a scenario that ever
+disagrees is written up by pasting rather than retyping. The tables are not
+behind a flag on purpose: the point of maintaining three implementations is
+being able to *see* that they agree, and a line asserting agreement is the kind
+of claim this whole layer exists to distrust.
+
+`default` therefore runs `validate` **last**, after `notebooks`, so those tables
+are the final thing on screen rather than buried under several hundred lines of
+Jupyter chatter. While iterating, `just validate` on its own is the fast path —
+it skips the notebook run entirely.
+
+Shared conventions, and the reason each exists:
+
+- **Exit codes.** `0` agreement, `1` mismatch, `2` tooling failure. The split is
+  load-bearing, not cosmetic: `1` is read as a finding against the system under
+  test, so a missing or malformed fixture must never take that path. A blank
+  cell, a `nan` literal or an unreadable file is `2`.
+- **Error handling.** These are harnesses, so the `result`-everywhere rule of
+  Coding Principles §V does not apply — same exemption as `bench/*.ml` and
+  `notebooks/*.ml` (§IX). They report via the exit codes above and terminate.
+  Anything library-shaped that they call does follow §V in full.
+- **Tolerance.** Absolute `1e-10`, with a NaN-aware comparator that branches on
+  both operands *before* subtracting: `Float.abs (nan -. x) <= tol` is `false`
+  for every `x` including `nan`, so a naive comparator reports both-NaN as a
+  mismatch and a regression-to-NaN as an ordinary one.
+- **Fixture headers** are asserted before parsing, so a format change fails by
+  name rather than as an arithmetic disagreement.
+- **Shared helpers** live in `test/unit/support/validate_support.{ml,mli}` —
+  the exit-code helpers, the line reader, the comparator, and the two fixture
+  directory constants — pinned by `test_validate_support.ml`. Consume them
+  rather than re-copying; the copies had already drifted before the library
+  existed. `test/unit/cairos_engine/cross_validate.ml` is the one holdout, and
+  its head comment records why: feature 0063 makes that file's being unmodified
+  the evidence for its own green run.
+
+### Third-party oracles (regeneration is opt-in; the comparison is not)
+
+`just validate-oracle` runs two third-party backtesters over three shared
+scenarios and rewrites the committed fixtures the gate compares against:
+
+```bash
+just validate-oracle    # regenerate oracle fixtures, then compare all three systems
+```
+
+Read the split carefully, because it is the whole design: **comparing** against
+the oracles happens on every change, as the last line of `just validate-check`;
+**running** them does not. The comparison binary reads committed CSVs and needs
+neither dependency, so keeping it out of the gate bought nothing and cost the
+one thing the fixtures exist for — an engine change drifting from two
+third-party references with nobody noticing until someone ran the opt-in recipe.
+The two scripts below are what stay opt-in, and only they are unreachable from
+`just`, `just validate`, or any CI job. The two
+dependencies are the heaviest this repository takes on — `vectorbt` resolves
+~59 packages including numba and LLVM, `nautilus_trader` 14 — and unrelated
+upstream breakage in either must not be able to redden a per-PR gate for a
+one-shot cross-check. Each is pinned in its own PEP 723 `# /// script` header
+rather than in `validation/pyproject.toml`, which `uv run` ignores for scripts
+carrying inline metadata; the per-script isolation is also what lets the two
+oracles and `reference.py` hold mutually incompatible dependency sets. Neither
+is a library dependency: nothing under `lib/` or in any `.opam` file refers to
+them. This paragraph is the §VII record for both.
+
+Their outputs are **committed** under `validation/oracle_fixtures/`, unlike
+every other fixture family, which is gitignored and regenerated by
+`just validate-generate`. That divergence is deliberate and rests on a class
+distinction: cheap Pandas-generated fixtures inside the gate can be regenerated
+on demand, whereas these are outputs of heavyweight runtimes kept outside it,
+and committing them is what lets the comparison binary run — and act as a
+regression anchor — with neither dependency installed. They live in a separate
+directory rather than under `validation/fixtures/` because that whole directory
+is gitignored and un-ignoring a subtree needs a `dir/*` + `!dir/sub/` rewrite;
+the separate path also makes committed-versus-generated visible from the path
+alone.
+
+A disagreement where two of the three systems agree against the third is a
+finding on the odd system out and is investigated. A three-way split, or a case
+where pairwise agreement is not transitive at the tolerance, identifies no
+culprit; those are recorded in `validation/KNOWN_DISCREPANCIES.md`, each with a
+self-contained investigation document under `validation/discrepancies/` written
+to be pasted whole into a session holding no prior context. Start from
+`validation/discrepancies/TEMPLATE.md`.
+
 ## Coding Principles
 
 Listed in priority order. All are enforced — none are guidelines.
@@ -182,6 +282,29 @@ auditable without reaching for an external document. A reference written by
 reading the implementation proves only that the code equals its own port; it
 cannot catch modeling errors, and this failure mode has shipped a real defect
 in this project.
+
+Enforcement is structural, not prompted. The clean-room author must run in an
+environment where the excluded artefacts are unreachable, not one where it is
+merely instructed not to open them. This requires the generation prompt to be
+fully self-contained, including any output contract the replacement must
+satisfy. The attestation records which mechanism enforced the exclusion.
+
+Process artefacts carry implementation context. Reflections, task notes, and
+decision logs that state how the implementation behaves are implementation
+context for clean-room purposes. Any workflow file the clean-room step loads by
+construction must not contain them — keep them in a sibling document that step
+does not open.
+
+The task decomposition that makes this enforceable is
+`docs/adrs/0064-clean-room-task-decomposition.md`.
+
+**A note on the ADR paths cited in this file.** `docs/` is not committed, so
+those citations are breadcrumbs for the maintainer, not links a cloner can
+follow — which is why every clause they point at is also stated substantively
+here. Files under `validation/` are held to the stricter rule: they may not cite
+uncommitted paths at all, because they are read by an auditor or a fresh
+investigation session with nothing but this repository, and a dangling reference
+there is a dead end rather than a footnote.
 
 ### IV. Make Invalid States Unrepresentable
 
@@ -269,6 +392,11 @@ Dependencies are welcome if they are worth their weight. When a dependency
 would meaningfully reduce implementation effort or improve correctness, flag
 it and discuss — do not assume it is forbidden and build from scratch instead.
 Do not add a dependency silently — always surface the tradeoff first.
+
+A developer-only dependency that no gate and no CI job installs is held to the
+same rule, not a relaxed one: the tradeoff is surfaced and the record is written
+down. `vectorbt` and `nautilus_trader` are the current instances — see Running
+Tests, "Third-party oracles".
 
 ### VIII. Documentation
 
