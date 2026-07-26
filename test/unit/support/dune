@@ -8,3 +8,18 @@
  (package cairos)
  (modules test_qcheck_gen)
  (libraries qcheck_gen alcotest cairos ptime))
+
+; Helpers shared by the validation cross-check (executable)s. Stdlib only, on
+; purpose: those binaries live in three different packages, and a support
+; library that pulled in cairos_io would make every one of them declare a
+; dependency it does not otherwise have.
+
+(library
+ (name validate_support)
+ (modules validate_support))
+
+(test
+ (name test_validate_support)
+ (package cairos)
+ (modules test_validate_support)
+ (libraries validate_support alcotest))

@@ -323,32 +323,6 @@ def write_resample_series_csv(name: str, series: pd.Series) -> None:
 
 
 # --- Backtest engine fixtures --------------------------------------------------
-#
-# Encodes the seven-step rebalance loop, the mark-to-market formula (extended
-# to non-fully-invested portfolios), the proportional sign-flip cost split, the
-# turnover-notional cost formula
-# [(commission +. slippage) *. abs(weight_delta) *. nav_after_mtm], the
-# NAV-update ordering (deduct cost from nav_after_mtm, then apply new weights),
-# and the end-of-backtest force-close at the last bar's close with no exit cost.
-#
-# COST CONVENTION: cost is a fraction of pre-cost NAV, never a function of the
-# absolute price level. The pre-fix formula multiplied by execution_price,
-# which is dimensionally wrong; the fix superseded that pinned formula. Both
-# sides of the cross-validation now use nav_after_mtm.
-#
-# PROVENANCE: this backtest reference is still a transliteration of the OCaml
-# engine, not an independent oracle — it shares the engine's derivation, so
-# Layer 2 checks transcription only. A later feature replaces it wholesale with
-# a vectorbt-based independent oracle; correctness of the cost fix rests on the
-# Layer 1 hand derivations in test_known_outcomes.ml, not on this file.
-#
-# This reference encodes the engine's conventions (as amended by the cost fix),
-# not Pandas defaults. There is no Pandas backtest primitive whose default this
-# could shadow; the conventions above are a from-scratch reimplementation of the
-# OCaml engine in NumPy.
-#
-# Trade column order is pinned — do not reorder without updating the
-# Trade.t field declaration order.
 
 BACKTEST_INSTRUMENTS = ["A", "B", "C", "D", "E"]
 BACKTEST_N_BARS = 50
@@ -411,6 +385,216 @@ def backtest_signals_df() -> pd.DataFrame:
     return pd.DataFrame(sig, index=backtest_dates(), columns=BACKTEST_INSTRUMENTS)
 
 
+# =============================================================================
+# PROVENANCE: backtest_reference
+# =============================================================================
+# Origin. This reference was written from the backtest engine specification
+# alone. Deliberately excluded and not available to the author: the OCaml
+# implementation this oracle cross-validates, any earlier Python reference, and
+# the implementation's own test suite. It is not a port or a transliteration of
+# anything; its purpose is to be *able* to disagree with the implementation, and
+# a reference derived from the implementation could only ever prove that the
+# code equals its own port. Where the specification is silent, the silence is
+# recorded at the bottom of this block rather than filled in with a guess at
+# what an implementation "probably" does.
+#
+# -----------------------------------------------------------------------------
+# What this encodes. Stated substantively: the specification documents are not
+# committed to this repository, so a citation like "per clause N" would be
+# unreadable to anyone here. The rules themselves:
+#
+#   Signal timing (close-to-open). A target weight read at rebalance bar r is
+#   executed at the open of bar r+1. Every execution price and every entry/exit
+#   timestamp of a rebalance-driven trade event is therefore taken from bar r+1,
+#   never from bar r. The signal is computed from bar r's close, so filling at
+#   bar r's close would trade on information only knowable once bar r ended.
+#
+#   Positions. Weights are fractions of current NAV. Negative is short, zero is
+#   flat, magnitude above 1.0 is leverage. No range validation, no clamping. The
+#   weights need not sum to 1.0; the unallocated remainder is cash and earns
+#   nothing.
+#
+#   Costs. Charged at rebalance bars only. At rebalance bar r, per instrument j,
+#   with w_held the weight carried into the bar and w_target the signal value,
+#   dw = w_target - w_held and
+#       cost_j     = (commission + slippage) * abs(dw_j) * nav_pre
+#       total_cost = sum_j cost_j
+#       nav_after  = nav_pre - total_cost
+#   where nav_pre is the NAV at bar r *after* marking the previously held
+#   weights from bar r-1 to bar r and *before* any deduction. Only then do the
+#   held weights become the targets: new positions are funded out of nav_after,
+#   not nav_pre. That ordering is load-bearing and is preserved here.
+#
+#   THE COST NOTIONAL IS TURNOVER IN NAV TERMS, NOT A PRICE LEVEL. abs(dw) is a
+#   dimensionless fraction of NAV and (commission + slippage) is a dimensionless
+#   fraction of notional, so the thing they multiply must be a money amount, and
+#   the only money amount in scope is NAV. Two strategies identical except that
+#   one instrument prints at 400 and the other at 4 incur *identical* costs.
+#   Nothing in this function multiplies a cost by a price, and nobody should
+#   "fix" it back toward a price-dimensioned formula. The equity path below
+#   exploits exactly this: because total_cost is proportional to nav_pre, the
+#   deduction is the scalar factor (1 - (commission + slippage) * turnover_r),
+#   which is algebraically identical to the subtraction above.
+#
+#   Mark-to-market (weighted-return form). For the step from bar t-1 to bar t
+#   with w_j the weight held across that step:
+#       nav_t = nav_{t-1} * (1 + sum_j w_j * (p_{t,j} / p_{t-1,j} - 1))
+#   This coincides with the "sum of weighted price relatives" form only when the
+#   weights sum to 1.0. Unlike that form it stays positive for shorts and is
+#   well defined when the book is not fully invested, both of which this input
+#   distribution produces constantly. A zero-weight portfolio drifts trivially.
+#
+#   Equity curve. One value per price bar, N values for N bars, carrying the
+#   price frame's index. equity[0] = 1.0 (NAV is normalised; there is no
+#   currency). At a non-rebalance bar the value is the mark-to-market result
+#   using the currently held weights. At a rebalance bar r the value is
+#   nav_after: marked from r-1 to r with the *previously* held weights, then
+#   reduced by the total cost. It is post-cost and pre-next-mark-to-market. New
+#   targets take effect at bar r and govern the step r -> r+1. After the final
+#   rebalance the held weights stay fixed and continue to be marked to market
+#   through the end of the frame; that is intended, not a truncation.
+#
+#   Held weights. The weight in force for instrument j at bar t is the target of
+#   the most recent rebalance bar <= t, and it governs the step t -> t+1. Bars
+#   before the first rebalance carry 0.0. These are *held* weights, not signal
+#   rows forward-filled: the two differ in general. Not returned; used
+#   internally, and it is the panel the mark-to-market consumes.
+#
+#   Returns. Per-bar arithmetic change of the equity curve, same index and
+#   length, first value NaN because there is no prior bar. Computed explicitly
+#   as equity[t]/equity[t-1] - 1 rather than through a percentage-change helper,
+#   so that no library fill/interpolate default can participate. The leading NaN
+#   is a contractual sentinel that survives into the fixture as an empty cell.
+#
+#   Trades: one record per round trip per instrument. Inception is the held
+#   weight going from zero to non-zero, or the opening side of a sign flip.
+#   Resolution is the target going to zero, the closing side of a sign flip, or
+#   the end of the run with the position still open. A same-direction size
+#   adjustment (both non-zero, same sign, different magnitude) updates the
+#   in-flight record and neither resolves it nor creates a new one: fifty size
+#   adjustments before a close produce one trade, not fifty-one. A cost is
+#   charged at every rebalance with non-zero dw regardless of which event it is.
+#
+#   Trade fields. entry_timestamp/entry_price come from the inception's
+#   execution bar (r_inception + 1) and are never moved by an adjustment; an
+#   adjustment's own execution price affects pnl and nothing else.
+#   exit_timestamp/exit_price come from the resolution's execution bar
+#   (r_resolution + 1), or from the last bar for a force-close.
+#   holding_period_bars is the integer row distance exit_bar - entry_bar and is
+#   not subdivided by adjustments.
+#
+#   Cost attribution. At an inception, an adjustment, or a plain resolution the
+#   whole per-instrument cost belongs to the single affected trade. At a sign
+#   flip the one per-instrument cost is split in proportion to each side's share
+#   of the turnover:
+#       closing_share = cost_j * abs(w_old) / (abs(w_old) + abs(w_new))
+#       opening_share = cost_j * abs(w_new) / (abs(w_old) + abs(w_new))
+#   For a flip abs(dw) == abs(w_old) + abs(w_new), so the shares sum to cost_j
+#   exactly: nothing is lost and nothing is double-counted. Symmetric flips
+#   split 50/50, asymmetric ones do not.
+#
+#   Force-close. Every instrument still holding a non-zero weight at the end of
+#   the run emits a final record: exit at the last bar's timestamp, exit_price
+#   the last bar's single price (its close), and NO cost, because costs are
+#   incurred at rebalance bars and the end of the data is not one.
+#
+#   Ordering (part of the contract; comparison is positional). Records are
+#   appended on resolution, so they appear in order of resolution bar, in price
+#   frame column order within a bar, with all force-closed records last in
+#   column order. A flip's closing record therefore is not adjacent to the
+#   record it incepts.
+#
+# -----------------------------------------------------------------------------
+# Independence claim, scoped honestly.
+#
+#   Equity / returns / held-weights path: STRUCTURAL independence. It is a
+#   forward-filled weight matrix multiplied against a matrix of per-bar price
+#   relatives, with the cost factor applied on the rebalance rows and a single
+#   cumulative product producing the curve. There is no bar-by-bar loop. This is
+#   not about speed (the fixture is fifty bars) - it is so that this path cannot
+#   reproduce the implementation's control flow, and reaches the same numbers by
+#   a different route or disagrees.
+#
+#   Trade scan: PROVENANCE-ONLY independence. It is sequential, and unavoidably
+#   so: in-flight records mutated by adjustments, a flip resolving and incepting
+#   at one execution bar, segment-summed P&L, force-close at the end. A
+#   vectorised state machine would itself need validating. Its independence
+#   rests solely on the fact that it was written from the specification with the
+#   implementation unavailable. That is a weaker claim than the one above and
+#   this comment does not pretend otherwise.
+#
+# -----------------------------------------------------------------------------
+# Silences and tensions in the specification, and how they were resolved.
+#
+# (1) P&L: segment form vs. accrual form. The specification states pnl as a sum
+#     over constant-weight segments, sum_k w_k * NAV_at_segment_entry_k *
+#     (p_{i_{k+1}}/p_{i_k} - 1), and separately pins the post-condition that
+#     1 + sum(pnl) equals the final equity value to a per-trade tolerance of
+#     1e-12. Those two are not the same number. "NAV at segment entry" is frozen
+#     for the whole segment, whereas the equity curve accrues each step against
+#     the running NAV at that step; they agree only in special cases (a fully
+#     invested single instrument, where nav_t/nav_entry telescopes to
+#     p_t/p_entry, or a segment spanning one step). Away from those they differ,
+#     and this input distribution is away from those on essentially every trade.
+#     Resolution: the accrual reading is implemented, because it is the one that
+#     satisfies the specification *as a whole*. The equity curve is pinned in
+#     full by the cost, mark-to-market, and held-weight rules; the reconciliation
+#     identity is asserted by the fixture generator and aborts the run when it
+#     fails; so the only free quantity is pnl, and only the accrual reading
+#     makes the identity hold. Concretely, each trade's pnl is the sum over the
+#     mark-to-market steps it owns of nav_{t-1} * w_held * (p_t/p_{t-1} - 1),
+#     minus its attributed costs. Because the trade spans partition, per
+#     instrument and without overlap, exactly the steps where the held weight is
+#     non-zero, and because every non-zero-dw cost is attributed to exactly one
+#     trade (flips splitting to an exact sum), the total telescopes to the final
+#     equity value identically rather than approximately. The segment structure
+#     survives: a trade's step range is the union of its constant-weight
+#     segments' steps, and summing per step is summing per segment regrouped.
+#
+# (2) A one-bar offset between the record fields and the P&L span, which follows
+#     from (1) and is left in place deliberately. Execution timing puts a trade's
+#     entry_price at bar r_inception+1, while the weight panel says the new
+#     target takes effect at bar r and governs the step r -> r+1. So the position
+#     earns p_{r+1}/p_r - 1 in the equity curve, but reports p_{r+1} as its entry
+#     price. The single-price convention is what makes these irreconcilable:
+#     with one value per (bar, instrument) serving as both close and open, the
+#     "open of bar r+1" is p_{r+1}, not p_r, so the close-to-open story implies a
+#     gap the weight panel never experiences. Both rules are pinned explicitly
+#     and independently, so each is applied where it governs: bar r+1 for record
+#     prices and timestamps and for holding_period_bars, the weight panel for
+#     the accrual. CONSEQUENCE FOR READERS: pnl is *not* recoverable from
+#     entry_price and exit_price. A test asserting pnl ~= w * nav *
+#     (exit_price/entry_price - 1) would be asserting a rule the specification
+#     does not contain. The same offset exists on the cost side, where the
+#     deduction lands at bar r while the fill is priced at bar r+1.
+#
+# (3) A rebalance at bar 0 is not addressed. The cost rule would charge a cost
+#     there (dw = target - 0), while the equity rule states equity[0] = 1.0
+#     unconditionally and the post-condition asserts it. Resolution: the cost
+#     rule is applied uniformly to every rebalance bar, so a rebalance at bar 0
+#     would yield equity[0] = 1 - total_cost_0 and trip the assertion. That is
+#     preferred over special-casing bar 0, because the justification given for
+#     equity[0] == 1.0 is the initial state of a zero-weight portfolio, which is
+#     a statement about the *pre-cost* NAV. Unreachable from the fixture inputs,
+#     whose rebalance bars start at 2; if it ever becomes reachable the assertion
+#     failure is the correct signal that the specification needs a ruling.
+#
+# (4) A rebalance whose target exactly equals the held weight (dw == 0, same
+#     sign, same magnitude) is not named as an event. Treated as a no-op: zero
+#     cost, no record created, no record resolved, the in-flight record's entry
+#     fields untouched. This is the same-direction branch with a zero-size
+#     adjustment and is the only reading consistent with adjustments not
+#     resolving anything.
+#
+# (5) The specification says nothing about the pandas Series `name` attribute,
+#     so none is set; the fixture writers pin the CSV headers themselves.
+#
+# (6) Degenerate inputs (NaN or non-positive prices, missing signal cells) are
+#     out of scope: the real entry point validates inputs before calling, and
+#     this function deliberately adds no re-checks that could mask a difference.
+# =============================================================================
+
+
 def backtest_reference(
     prices_df: pd.DataFrame,
     signals_df: pd.DataFrame,
@@ -418,151 +602,216 @@ def backtest_reference(
     commission: float,
     slippage: float,
 ) -> tuple[pd.Series, pd.Series, list[_Trade]]:
-    columns = list(prices_df.columns)
-    n_cols = len(columns)
-    n_bars = len(prices_df.index)
-    timestamps = list(prices_df.index)
-    prices = prices_df.to_numpy()
-    signals = signals_df.to_numpy()
-    cs = commission + slippage
-    rebalance_set = set(rebalance_bar_indices)
+    index = prices_df.index
+    instruments = list(prices_df.columns)
+    n_bars = len(index)
+    n_instruments = len(instruments)
 
-    current_weights = [0.0] * n_cols
-    current_nav = 1.0
-    in_flight: list[dict | None] = [None] * n_cols
+    prices = prices_df.to_numpy(dtype=float)
+    signals = signals_df.to_numpy(dtype=float)
+    rebalance_bars = np.asarray(rebalance_bar_indices, dtype=np.int64)
+
+    # Dimensionless fraction of notional, charged per unit of NAV turnover.
+    cost_per_unit_turnover = float(commission) + float(slippage)
+
+    # -------------------------------------------------------------------------
+    # VECTORISED PATH (1/4): held weights.
+    # held[t, j] is the target of the most recent rebalance bar <= t, or 0.0 for
+    # bars preceding the first rebalance. It governs the step t -> t+1.
+    # -------------------------------------------------------------------------
+    held = np.zeros((n_bars, n_instruments), dtype=float)
+    most_recent = np.searchsorted(rebalance_bars, np.arange(n_bars), side="right") - 1
+    after_first_rebalance = most_recent >= 0
+    held[after_first_rebalance] = signals[rebalance_bars[most_recent[after_first_rebalance]]]
+
+    # held_into_bar[t] is the weight carried *into* bar t, i.e. the weight that
+    # governs the mark-to-market step ending at bar t, and the w_held that the
+    # cost rule differences against the new target at a rebalance bar.
+    held_into_bar = np.vstack((np.zeros((1, n_instruments), dtype=float), held[:-1]))
+
+    # -------------------------------------------------------------------------
+    # VECTORISED PATH (2/4): per-bar price relatives, p_t / p_{t-1} - 1.
+    # Row 0 is zero: there is no prior bar, and the weight carried into bar 0 is
+    # zero anyway, so the zero never contributes.
+    # -------------------------------------------------------------------------
+    relatives = np.zeros((n_bars, n_instruments), dtype=float)
+    relatives[1:] = prices[1:] / prices[:-1] - 1.0
+
+    # -------------------------------------------------------------------------
+    # VECTORISED PATH (3/4): costs, applied on the rebalance rows only.
+    # -------------------------------------------------------------------------
+    delta_weight = np.zeros((n_bars, n_instruments), dtype=float)
+    delta_weight[rebalance_bars] = held[rebalance_bars] - held_into_bar[rebalance_bars]
+    turnover = np.abs(delta_weight).sum(axis=1)
+
+    # Fraction of pre-cost NAV removed at each bar; identically zero off the
+    # rebalance rows. Note again: no price appears here.
+    cost_fraction = cost_per_unit_turnover * turnover
+
+    # -------------------------------------------------------------------------
+    # VECTORISED PATH (4/4): equity curve and returns.
+    #   gross_growth[t] = 1 + sum_j held_into_bar[t, j] * relatives[t, j]
+    #   equity[t]       = equity[t-1] * gross_growth[t] * (1 - cost_fraction[t])
+    # The second factor is the cost deduction: because total_cost is
+    # cost_fraction * nav_pre, subtracting it and scaling by (1 - cost_fraction)
+    # are the same operation. The subtraction form is recovered explicitly below
+    # as cost_money, which the trade scan needs per instrument.
+    # -------------------------------------------------------------------------
+    gross_growth = 1.0 + (held_into_bar * relatives).sum(axis=1)
+    equity_values = np.cumprod(gross_growth * (1.0 - cost_fraction))
+
+    # NAV carried into each bar; 1.0 into bar 0 (normalised, zero-weight start).
+    nav_into_bar = np.empty(n_bars, dtype=float)
+    nav_into_bar[0] = 1.0
+    nav_into_bar[1:] = equity_values[:-1]
+
+    # Pre-cost NAV at each bar: marked to market with the previously held
+    # weights, before any deduction. This is the notional the cost rule uses.
+    nav_pre_cost = nav_into_bar * gross_growth
+
+    # Money P&L contributed by instrument j over the step ending at bar t,
+    # accrued against the running NAV. Summing this whole matrix gives the
+    # equity curve's total gross gain, which is what makes the reconciliation
+    # identity exact rather than approximate.
+    contribution = nav_into_bar[:, None] * held_into_bar * relatives
+
+    # Per-instrument money cost at each rebalance bar; zero elsewhere.
+    cost_money = cost_per_unit_turnover * np.abs(delta_weight) * nav_pre_cost[:, None]
+
+    # Returns: first value NaN by contract. Written out rather than delegated to
+    # a percentage-change helper, so no fill default can apply.
+    returns_values = np.empty(n_bars, dtype=float)
+    returns_values[0] = np.nan
+    returns_values[1:] = equity_values[1:] / equity_values[:-1] - 1.0
+
+    equity_curve = pd.Series(equity_values, index=index)
+    returns = pd.Series(returns_values, index=index)
+
+    # -------------------------------------------------------------------------
+    # SEQUENTIAL TRADE SCAN. Deliberately not vectorised: the state machine
+    # (in-flight records mutated by same-direction adjustments, a flip resolving
+    # one record and incepting another at a single execution bar, force-close at
+    # the end) is inherently sequential, and a vectorised version would need
+    # validating in its own right. Independence for this section is by
+    # provenance only -- see the block above.
+    #
+    # In-flight state per instrument:
+    #   entry_bar         execution bar of the inception (r_inception + 1), the
+    #                     bar the record's entry timestamp and price come from
+    #   first_accrual_bar first mark-to-market step credited to this record,
+    #                     i.e. the step r_inception -> r_inception + 1, labelled
+    #                     by its ending bar. Numerically equal to entry_bar; the
+    #                     two are kept apart because they mean different things
+    #                     and diverge at the exit end (see silence (2)).
+    #   costs             costs attributed so far: inception (or opening share
+    #                     of a flip) plus every adjustment
+    # -------------------------------------------------------------------------
     trades: list[_Trade] = []
-    equity_buf = [0.0] * n_bars
+    in_flight: list[dict | None] = [None] * n_instruments
 
-    for t in range(n_bars):
-        # Mark-to-market step (fractional-weight weighted-return form,
-        # equivalent to the literal formula at full investment, well-defined
-        # for shorts and partial cash).
-        if t > 0:
-            nav_pre = current_nav
-            total_ret = 0.0
-            for j in range(n_cols):
-                w = current_weights[j]
-                if w != 0.0:
-                    r = prices[t, j] / prices[t - 1, j] - 1.0
-                    total_ret += w * r
-                    ift = in_flight[j]
-                    if ift is not None:
-                        ift["pnl_acc"] += w * nav_pre * r
-            current_nav = nav_pre * (1.0 + total_ret)
+    def resolve(instrument_idx: int, exit_bar: int, last_accrual_bar: int, exit_cost: float) -> _Trade:
+        """Close the in-flight record and build its _Trade. Segment-summed P&L:
+        the sum over the mark-to-market steps this record owns, which is the sum
+        over its constant-weight segments regrouped step by step."""
+        state = in_flight[instrument_idx]
+        gross_pnl = float(
+            contribution[state["first_accrual_bar"] : last_accrual_bar + 1, instrument_idx].sum()
+        )
+        attributed_costs = state["costs"] + exit_cost
+        entry_bar = state["entry_bar"]
+        in_flight[instrument_idx] = None
+        return _Trade(
+            entry_timestamp=index[entry_bar],
+            exit_timestamp=index[exit_bar],
+            instrument=instruments[instrument_idx],
+            entry_price=float(prices[entry_bar, instrument_idx]),
+            exit_price=float(prices[exit_bar, instrument_idx]),
+            pnl=gross_pnl - attributed_costs,
+            holding_period_bars=int(exit_bar - entry_bar),
+        )
 
-        # Rebalance step (seven-step rebalance loop / NAV-update ordering).
-        if t in rebalance_set:
-            exec_bar = t + 1
-            nav_after_mtm = current_nav
-            dws = [0.0] * n_cols
-            costs = [0.0] * n_cols
-            total_cost = 0.0
-            for j in range(n_cols):
-                target = float(signals[t, j])
-                w_old = current_weights[j]
-                dw = target - w_old
-                # Cost is turnover (|dw|) as a fraction of pre-cost NAV
-                # (nav_after_mtm), not of the absolute price level. The
-                # price-dimensioned form was dimensionally wrong. exec_price is
-                # bound only in the second (trade-record) loop below, where it
-                # is a trade field.
-                cost = cs * abs(dw) * nav_after_mtm
-                dws[j] = dw
-                costs[j] = cost
-                total_cost += cost
-            nav_after_cost = nav_after_mtm - total_cost
+    for rebalance_bar in rebalance_bars.tolist():
+        execution_bar = rebalance_bar + 1  # close-to-open: fills at bar r+1
 
-            for j in range(n_cols):
-                dw = dws[j]
-                if dw == 0.0:
-                    continue
-                target = float(signals[t, j])
-                w_old = current_weights[j]
-                cost_j = costs[j]
-                exec_price = float(prices[exec_bar, j])
-                exec_ts = timestamps[exec_bar]
-                if w_old == 0.0:
-                    in_flight[j] = {
-                        "entry_timestamp": exec_ts,
-                        "entry_bar": exec_bar,
-                        "entry_price": exec_price,
-                        "pnl_acc": -cost_j,
-                    }
-                elif target == 0.0:
-                    ift = in_flight[j]
-                    assert ift is not None
-                    trades.append(
-                        _Trade(
-                            entry_timestamp=ift["entry_timestamp"],
-                            exit_timestamp=exec_ts,
-                            instrument=columns[j],
-                            entry_price=ift["entry_price"],
-                            exit_price=exec_price,
-                            pnl=ift["pnl_acc"] - cost_j,
-                            holding_period_bars=exec_bar - ift["entry_bar"],
-                        )
+        for j in range(n_instruments):  # price-frame column order
+            weight_old = float(held_into_bar[rebalance_bar, j])
+            weight_new = float(held[rebalance_bar, j])
+
+            if weight_old == 0.0 and weight_new == 0.0:
+                continue  # flat to flat: no turnover, no cost, no event
+
+            instrument_cost = float(cost_money[rebalance_bar, j])
+
+            if weight_old == 0.0:
+                # Inception from flat.
+                in_flight[j] = {
+                    "entry_bar": execution_bar,
+                    "first_accrual_bar": rebalance_bar + 1,
+                    "costs": instrument_cost,
+                }
+
+            elif weight_new == 0.0:
+                # Plain resolution to flat. The record owns steps up to and
+                # including the one ending at the rebalance bar, because the
+                # weight it held governed the step (r-1 -> r) and the new (zero)
+                # weight governs (r -> r+1).
+                trades.append(
+                    resolve(
+                        instrument_idx=j,
+                        exit_bar=execution_bar,
+                        last_accrual_bar=rebalance_bar,
+                        exit_cost=instrument_cost,
                     )
-                    in_flight[j] = None
-                elif (w_old > 0 and target > 0) or (w_old < 0 and target < 0):
-                    ift = in_flight[j]
-                    assert ift is not None
-                    ift["pnl_acc"] -= cost_j
-                else:
-                    # Sign flip — proportional cost split.
-                    abs_old = abs(w_old)
-                    abs_new = abs(target)
-                    denom = abs_old + abs_new
-                    close_share = cost_j * abs_old / denom
-                    open_share = cost_j * abs_new / denom
-                    ift = in_flight[j]
-                    assert ift is not None
-                    trades.append(
-                        _Trade(
-                            entry_timestamp=ift["entry_timestamp"],
-                            exit_timestamp=exec_ts,
-                            instrument=columns[j],
-                            entry_price=ift["entry_price"],
-                            exit_price=exec_price,
-                            pnl=ift["pnl_acc"] - close_share,
-                            holding_period_bars=exec_bar - ift["entry_bar"],
-                        )
-                    )
-                    in_flight[j] = {
-                        "entry_timestamp": exec_ts,
-                        "entry_bar": exec_bar,
-                        "entry_price": exec_price,
-                        "pnl_acc": -open_share,
-                    }
-
-            for j in range(n_cols):
-                current_weights[j] = float(signals[t, j])
-            current_nav = nav_after_cost
-
-        equity_buf[t] = current_nav
-
-    # End-of-backtest force-close: each still-open trade
-    # resolves at the last bar's close with no exit cost.
-    last_bar = n_bars - 1
-    last_ts = timestamps[last_bar]
-    for j in range(n_cols):
-        ift = in_flight[j]
-        if ift is not None:
-            trades.append(
-                _Trade(
-                    entry_timestamp=ift["entry_timestamp"],
-                    exit_timestamp=last_ts,
-                    instrument=columns[j],
-                    entry_price=ift["entry_price"],
-                    exit_price=float(prices[last_bar, j]),
-                    pnl=ift["pnl_acc"],
-                    holding_period_bars=last_bar - ift["entry_bar"],
                 )
-            )
-            in_flight[j] = None
 
-    equity_curve = pd.Series(equity_buf, index=prices_df.index, name="value")
-    returns = equity_curve.pct_change(fill_method=None)
-    returns.name = "value"
+            elif (weight_old > 0.0) == (weight_new > 0.0):
+                # Same-direction size adjustment: updates the in-flight record,
+                # does not resolve it and does not create a new one. Entry
+                # timestamp, entry price and the accrual start are untouched;
+                # only the cost attaches, and the changed weight is already in
+                # the panel that drives the accrual from here on.
+                in_flight[j]["costs"] += instrument_cost
+
+            else:
+                # Sign flip: one close and one open at the same execution bar,
+                # sharing a single per-instrument cost split by each side's
+                # contribution to the turnover. abs(dw) == abs(old) + abs(new)
+                # here, so the two shares sum to the cost exactly.
+                turnover_basis = abs(weight_old) + abs(weight_new)
+                closing_share = instrument_cost * abs(weight_old) / turnover_basis
+                opening_share = instrument_cost * abs(weight_new) / turnover_basis
+
+                trades.append(
+                    resolve(
+                        instrument_idx=j,
+                        exit_bar=execution_bar,
+                        last_accrual_bar=rebalance_bar,
+                        exit_cost=closing_share,
+                    )
+                )
+                in_flight[j] = {
+                    "entry_bar": execution_bar,
+                    "first_accrual_bar": rebalance_bar + 1,
+                    "costs": opening_share,
+                }
+
+    # Force-close: positions still open when the data ends. Exit at the last
+    # bar's timestamp and its single price (its close, not a synthesised next
+    # open), and no cost, since the end of the frame is not a rebalance. These
+    # resolve last, in column order.
+    last_bar = n_bars - 1
+    for j in range(n_instruments):
+        if in_flight[j] is None:
+            continue
+        trades.append(
+            resolve(
+                instrument_idx=j,
+                exit_bar=last_bar,
+                last_accrual_bar=last_bar,
+                exit_cost=0.0,
+            )
+        )
+
     return equity_curve, returns, trades
 
 

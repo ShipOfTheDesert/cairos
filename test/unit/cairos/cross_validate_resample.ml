@@ -16,22 +16,11 @@
 
 open Cairos
 
-let fixture_dir = "validation/fixtures"
-let tolerance = 1e-10
-
-let die_tooling fmt =
-  Printf.ksprintf
-    (fun s ->
-      prerr_endline ("cross_validate_resample (tooling): " ^ s);
-      exit 2)
-    fmt
-
-let die_mismatch fmt =
-  Printf.ksprintf
-    (fun s ->
-      prerr_endline ("cross_validate_resample: " ^ s);
-      exit 1)
-    fmt
+let binary = "cross_validate_resample"
+let fixture_dir = Validate_support.generated_fixture_dir
+let tolerance = Validate_support.default_tolerance
+let die_tooling fmt = Validate_support.die_tooling ~binary fmt
+let die_mismatch fmt = Validate_support.die_mismatch ~binary fmt
 
 let read_daily_series ~path :
     ([ `Daily ], (float, Bigarray.float64_elt) Nx.t) Series.t =
@@ -39,12 +28,7 @@ let read_daily_series ~path :
   | Ok s -> s
   | Error msg -> die_tooling "%s: %s" path msg
 
-let read_lines path =
-  match In_channel.with_open_text path In_channel.input_all with
-  | exception Sys_error msg -> die_tooling "%s: %s" path msg
-  | content ->
-      String.split_on_char '\n' content
-      |> List.filter (fun s -> String.length (String.trim s) > 0)
+let read_lines path = Validate_support.read_lines ~binary path
 
 (* Reads a (timestamp,value) reference fixture. Timestamps are full RFC 3339
    (T00:00:00Z), parsed via Ptime.of_rfc3339; an empty value cell produces
@@ -87,11 +71,7 @@ let read_expected ~path : (Ptime.t * float) array =
         rest
       |> Array.of_list
 
-let float_close a b =
-  let an = Float.is_nan a and bn = Float.is_nan b in
-  if an && bn then true
-  else if an || bn then false
-  else Float.abs (a -. b) <= tolerance
+let float_close a b = Validate_support.float_close ~tolerance a b
 
 (* Compares an actual monthly series against the expected (timestamp,value)
    reference, checking labels exactly (Ptime.equal) and values under the

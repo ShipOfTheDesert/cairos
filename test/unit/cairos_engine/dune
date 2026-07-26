@@ -35,3 +35,15 @@
  (name cross_validate)
  (modules cross_validate)
  (libraries cairos cairos_engine cairos_io nx ptime fmt))
+
+; (executable) not (test) for the same reason: the oracle fixtures under
+; validation/oracle_fixtures/ are written by third-party backtesters that dune
+; runtest must never need. Those fixtures are committed, so this binary itself
+; needs neither of those dependencies and runs as the last line of
+; just validate-check — in the default gate and in CI. What stays opt-in is
+; just validate-oracle, which regenerates the fixtures by running the oracles.
+
+(executable
+ (name cross_validate_oracles)
+ (modules cross_validate_oracles)
+ (libraries validate_support cairos cairos_engine cairos_io nx ptime))
