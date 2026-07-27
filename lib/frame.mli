@@ -7,16 +7,43 @@
 
 type 'freq t
 
+(** {1 Errors}
+
+    {!of_series} returns a structured error so callers can pattern-match on the
+    failure mode and recover the offending column without scanning error
+    strings. *)
+
+type err =
+  | Duplicate_column of { name : string }
+      (** Two of the supplied pairs carried the column name [name]. The
+          positions are not carried: the scan reports the first repeat it
+          reaches and holds no column index. *)
+  | Index_mismatch of {
+      column : string;
+      expected_length : int;
+      found_length : int;
+    }
+      (** The index of column [column] is not structurally identical to the
+          reference index, which is the first pair's. [expected_length] is the
+          reference index's length and [found_length] is [column]'s. Equal
+          lengths mean the two agree in length and differ in their timestamps or
+          the order of them. *)
+
+val err_to_string : err -> string
+(** Render [err] as a human-readable one-line message. *)
+
 val of_series :
   (string * ('freq, (float, Bigarray.float64_elt) Nx.t) Series.t) Nonempty.t ->
-  ('freq t, string) result
+  ('freq t, err) result
 (** [of_series pairs] constructs a frame from named series. All series must have
     structurally identical indices (same length, same timestamps in the same
     order). The index of the first series is the reference.
 
     Non-emptiness is a structural precondition — the [Nonempty.t] parameter
     makes a zero-column Frame unrepresentable at compile time. Remaining runtime
-    errors: duplicate column names, index mismatch across series.
+    errors: [Error (Duplicate_column _)] for a repeated column name, checked
+    first, and [Error (Index_mismatch _)] for a series whose index differs from
+    the first series'.
 
     Column names are preserved in insertion order. *)
 

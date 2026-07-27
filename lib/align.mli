@@ -11,11 +11,26 @@ type ('freq, 'a, 'b) aligned
     callers cannot pattern-match or project fields — misaligned binary
     operations remain unrepresentable by construction. *)
 
+(** {1 Errors}
+
+    {!align} returns a structured error so callers can pattern-match on the
+    failure mode and recover the offending lengths without scanning error
+    strings. *)
+
+type err =
+  | Empty_index of { left_length : int; right_length : int }
+      (** The aligned index would be empty. Only [`Inner] can produce this: the
+          left series had [left_length] timestamps, the right had
+          [right_length], and the two share none. *)
+
+val err_to_string : err -> string
+(** Render [err] as a human-readable one-line message. *)
+
 val align :
   strategy:[ `Inner | `Left | `Asof of [ `Forward | `Backward ] ] ->
   ('freq, ('a, 'b) Nx.t) Series.t ->
   ('freq, (float, 'c) Nx.t) Series.t ->
-  (('freq, ('a, 'b) Nx.t, (float, 'c) Nx.t) aligned, string) result
+  (('freq, ('a, 'b) Nx.t, (float, 'c) Nx.t) aligned, err) result
 (** [align ~strategy left right] pairs two same-frequency series on a shared
     index according to [strategy].
 
@@ -28,9 +43,9 @@ val align :
     - [`Asof `Forward] — for each left timestamp, matches the nearest right
       timestamp at or after it. Unmatched positions are [Float.nan].
 
-    Returns [Error msg] when the resulting index would be empty (Inner with
-    disjoint series). Left and Asof always return [Ok] for non-empty left input.
-*)
+    Returns [Error (Empty_index _)] when the resulting index would be empty
+    (Inner with disjoint series). Left and Asof always return [Ok] for non-empty
+    left input. *)
 
 val map2 :
   (float -> float -> float) ->

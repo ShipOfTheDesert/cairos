@@ -17,7 +17,7 @@ let make_values ~length =
 let make_series idx vals =
   match Cairos.Series.make idx vals with
   | Ok s -> s
-  | Error e -> failwith ("bench input series: " ^ e)
+  | Error e -> failwith ("bench input series: " ^ Cairos.Series.err_to_string e)
 
 let make_frame ~bars ~columns =
   let idx = make_index ~length:bars () in
@@ -36,4 +36,5 @@ let make_frame ~bars ~columns =
   | Some ne -> (
       match Cairos.Frame.of_series ne with
       | Ok f -> f
-      | Error e -> failwith ("bench input frame: " ^ e))
+      | Error e ->
+          failwith ("bench input frame: " ^ Cairos.Frame.err_to_string e))

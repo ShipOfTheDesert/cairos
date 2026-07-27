@@ -12,11 +12,12 @@
 
    [paired_overlapping_daily_arb] guarantees overlap >= 1 by construction, so
    [Inner] always returns [Ok] for inputs from this generator; the [Error]
-   branch is structurally unreachable. An
-   unreachable test branch is terminated with [failwith] — propagating the
-   property to [false] would mis-classify a generator-internal failure as a
-   library bug, and the QCheck shrinker would then mis-report the
-   counter-example. *)
+   branch is structurally unreachable. It is terminated with [failwith] rather
+   than [false] because reaching it means either [align] or the generator's
+   overlap guarantee is broken — an invariant failure, not the contract
+   violation a property counterexample describes. Shrinking is unaffected by
+   the choice: QCheck shrinks a raised exception in a property body exactly as
+   it shrinks a [false] return. See ocaml/qcheck-generator-failwith.md. *)
 let inner_length_bounded_by_min =
   QCheck.Test.make ~count:200 ~name:"inner_length_bounded_by_min"
     Qcheck_gen.paired_overlapping_daily_arb (fun (a, b) ->

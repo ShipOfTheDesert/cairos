@@ -1,17 +1,26 @@
 type ('freq, 'v) t = { index : 'freq Index.t; values : 'v }
 
+type err =
+  | Length_mismatch of { index_length : int; values_length : int }
+  | Zero_dimensional_values
+
+let err_to_string = function
+  | Length_mismatch { index_length; values_length } ->
+      Printf.sprintf "index length %d does not match values length %d"
+        index_length values_length
+  | Zero_dimensional_values ->
+      "values tensor is 0-dimensional: no leading axis to match the index"
+
 let make index values =
   let shape = Nx.shape values in
-  if Array.length shape = 0 then
-    Error "values tensor is 0-dimensional: no leading axis to match the index"
+  if Array.length shape = 0 then Error Zero_dimensional_values
   else
     let idx_len = Index.length index in
     let val_len = shape.(0) in
     if idx_len = val_len then Ok { index; values }
     else
       Error
-        (Printf.sprintf "index length %d does not match values length %d"
-           idx_len val_len)
+        (Length_mismatch { index_length = idx_len; values_length = val_len })
 
 let make_unsafe index values = { index; values }
 let index t = t.index

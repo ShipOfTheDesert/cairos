@@ -1,9 +1,14 @@
 # Reports `assert` tokens in OCaml source outside comments and string literals.
 #
+# The lexer below (is_ident_char through strip) is duplicated verbatim in
+# lint-string-errors.awk, whose matcher differs. Fix them together; extract a
+# shared file when a third consumer appears.
+#
 # Text-level lints are blind to syntax in both directions: a bare grep for a
 # banned token also fires on the comment or docstring that merely describes it,
-# and lib/cairos_io/cairos_io.ml:82 does exactly that today. So this lexes just
-# enough OCaml to remove the non-code text before matching:
+# and the `parse_rows` doc comment in lib/cairos_io/cairos_io.ml does exactly
+# that today. So this lexes just enough OCaml to remove the non-code text
+# before matching:
 #
 #   - nested (* (* *) *) comments;
 #   - string literals, including the backslash continuations ocamlformat

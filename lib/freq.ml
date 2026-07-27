@@ -4,3 +4,5 @@ type _ t =
   | Hour : [ `Hour ] t
   | Week : [ `Weekly ] t
   | Month : [ `Monthly ] t
+
+type any = Any : _ t -> any

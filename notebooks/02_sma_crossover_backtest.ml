@@ -50,7 +50,9 @@
 (* *)
 (* Both backtest notebooks share a small `notebooks/_helpers.ml` file that *)
 (* holds one piece of boilerplate: `unwrap`, a terse notebook-style *)
-(* `Result` unwrap that fails loudly on `Error`. Factoring shared *)
+(* `Result` unwrap that fails loudly on `Error`. It takes the failing *)
+(* module's own `err_to_string` as `~render`, since every fallible entry *)
+(* point returns its own closed error variant. Factoring shared *)
 (* boilerplate into a sibling `.ml` file and loading it with `#use` is the *)
 (* common real-world practice for notebook series that share helper *)
 (* functions — keeping each notebook's body focused on the strategy, not *)
@@ -83,7 +85,7 @@ open Cairos
 
 (* %% vscode={"languageId": "ocaml"} *)
 let prices =
-  unwrap "Cairos_io.of_csv"
+  unwrap ~render:Cairos_io.err_to_string "Cairos_io.of_csv"
     (Cairos_io.of_csv ~freq:Freq.Day "data/02_sma_crossover.csv")
 
 let () = Cairos_jupyter.pp_series "prices" prices
@@ -122,7 +124,7 @@ let () =
 
 (* %% vscode={"languageId": "ocaml"} *)
 let aligned_smas =
-  unwrap "align fast/slow SMA"
+  unwrap ~render:Align.err_to_string "align fast/slow SMA"
     (Align.align ~strategy:`Inner fast_sma slow_sma)
 
 let signal =
@@ -151,7 +153,7 @@ let returns = Series.pct_change prices
 
 let stgret =
   let paired =
-    unwrap "align lagged_signal/returns"
+    unwrap ~render:Align.err_to_string "align lagged_signal/returns"
       (Align.align ~strategy:`Inner lagged_signal returns)
   in
   Align.map2 ( *. ) paired
@@ -224,7 +226,10 @@ let () =
 (* candidate code was: *)
 (* *)
 (* ```ocaml *)
-(* let weekly = unwrap "resample" (Resample.resample ~agg:`Last Freq.Week prices) in *)
+(* let weekly = *)
+(*   unwrap ~render:Resample.err_to_string "resample" *)
+(*     (Resample.resample ~agg:`Last Freq.Week prices) *)
+(* in *)
 (* let _ = Align.align ~strategy:`Inner prices weekly in *)
 (* () *)
 (* ``` *)

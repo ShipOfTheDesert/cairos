@@ -1,0 +1,25 @@
+(* Self-test fixture for the `lint-string-errors` recipe in the justfile — the
+   only consumer of this file. It is not built: the `.fixture` suffix keeps it
+   out of dune's sight, which is what protects the line break below.
+
+   Contract: this file must FAIL the gate (exit 1), for the same reason
+   string_error_violation.mli.fixture does — but with the shape split across
+   three lines instead of sitting on one.
+
+   The split is not invented. It is what ocamlformat 0.28.1 produces, under
+   this repository's .ocamlformat, from a signature whose success-side type is
+   wide enough to break the parenthesis: [string] lands on its own line and
+   [result] on the next, so no single line contains [string) result]. Every
+   .mli the gate scans is ocamlformat output, so this is the shape a real
+   violation takes as soon as the success side grows — and a line-at-a-time
+   scan reports the file clean. *)
+
+type ('freq, 'v, 'layout) t
+
+val frame_of_csv_with :
+  path:string ->
+  header:bool ->
+  timestamp_col:int ->
+  ( ('freq, (float, Bigarray.float64_elt) Nx.t, [ `Column_major ]) t,
+    string )
+  result

@@ -95,7 +95,10 @@ let frame_from_columns ~idx ~names ~values =
       let ne = Cairos.Nonempty.make first rest in
       match Cairos.Frame.of_series ne with
       | Ok f -> f
-      | Error e -> failwith ("test_invariants.frame_from_columns: " ^ e))
+      | Error e ->
+          failwith
+            ("test_invariants.frame_from_columns: "
+            ^ Cairos.Frame.err_to_string e))
 
 let engine_inputs_gen =
   let open QCheck.Gen in

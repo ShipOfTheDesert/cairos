@@ -13,7 +13,7 @@ let inner_overlapping_series () =
       [| 30.0; 40.0; 50.0; 60.0; 70.0 |]
   in
   match Cairos.Align.align ~strategy:`Inner left right with
-  | Error e -> Alcotest.fail e
+  | Error e -> Alcotest.fail (Cairos.Align.err_to_string e)
   | Ok aligned ->
       let idx = Cairos.Align.index aligned in
       Alcotest.(check int) "aligned length" 3 (Cairos.Index.length idx);
@@ -26,20 +26,38 @@ let inner_overlapping_series () =
       Alcotest.(check (float 0.001)) "right 1" 40.0 rv.(1);
       Alcotest.(check (float 0.001)) "right 2" 50.0 rv.(2)
 
-let inner_disjoint_series () =
+(* Deliberately asymmetric input lengths: 3 on the left, 2 on the right. A
+   symmetric pair would pass just as well against an implementation that
+   filled the two payload fields the wrong way round. *)
+let align_empty_index_variant () =
   let left =
     Test_helpers.make_daily_series
-      [| "2024-01-01"; "2024-01-02" |]
-      [| 1.0; 2.0 |]
+      [| "2024-01-01"; "2024-01-02"; "2024-01-03" |]
+      [| 1.0; 2.0; 3.0 |]
   in
   let right =
     Test_helpers.make_daily_series
-      [| "2024-01-03"; "2024-01-04" |]
-      [| 3.0; 4.0 |]
+      [| "2024-01-05"; "2024-01-06" |]
+      [| 5.0; 6.0 |]
   in
   match Cairos.Align.align ~strategy:`Inner left right with
   | Ok _ -> Alcotest.fail "expected Error for disjoint series"
-  | Error _ -> ()
+  | Error (Cairos.Align.Empty_index { left_length; right_length }) ->
+      Alcotest.(check int) "left_length" 3 left_length;
+      Alcotest.(check int) "right_length" 2 right_length
+
+(* Message prose is not contractual, so this asserts only that every
+   constructor renders something a caller can put in a log line — never that
+   the message contains particular words. *)
+let align_err_to_string_nonempty () =
+  let msg =
+    Cairos.Align.err_to_string
+      (Cairos.Align.Empty_index { left_length = 3; right_length = 2 })
+  in
+  Alcotest.(check bool) "Empty_index is non-empty" true (String.length msg > 0);
+  Alcotest.(check bool)
+    "Empty_index is single-line" true
+    (not (String.contains msg '\n'))
 
 let inner_subset_series () =
   (* Left is a subset of right *)
@@ -54,7 +72,7 @@ let inner_subset_series () =
       [| 100.0; 200.0; 300.0; 400.0; 500.0 |]
   in
   match Cairos.Align.align ~strategy:`Inner left right with
-  | Error e -> Alcotest.fail e
+  | Error e -> Alcotest.fail (Cairos.Align.err_to_string e)
   | Ok aligned ->
       let idx = Cairos.Align.index aligned in
       Alcotest.(check int) "aligned length" 3 (Cairos.Index.length idx);
@@ -79,7 +97,7 @@ let inner_single_common_timestamp () =
       [| 20.0; 30.0 |]
   in
   match Cairos.Align.align ~strategy:`Inner left right with
-  | Error e -> Alcotest.fail e
+  | Error e -> Alcotest.fail (Cairos.Align.err_to_string e)
   | Ok aligned ->
       let idx = Cairos.Align.index aligned in
       Alcotest.(check int) "aligned length" 1 (Cairos.Index.length idx);
@@ -103,7 +121,7 @@ let left_fills_missing_with_nan () =
       [| 100.0; 300.0 |]
   in
   match Cairos.Align.align ~strategy:`Left left right with
-  | Error e -> Alcotest.fail e
+  | Error e -> Alcotest.fail (Cairos.Align.err_to_string e)
   | Ok aligned ->
       let idx = Cairos.Align.index aligned in
       Alcotest.(check int) "aligned length" 4 (Cairos.Index.length idx);
@@ -130,7 +148,7 @@ let left_full_overlap () =
       [| 10.0; 20.0; 30.0 |]
   in
   match Cairos.Align.align ~strategy:`Left left right with
-  | Error e -> Alcotest.fail e
+  | Error e -> Alcotest.fail (Cairos.Align.err_to_string e)
   | Ok aligned ->
       let rv = Nx.to_array (Cairos.Align.right aligned) in
       Alcotest.(check (float 0.001)) "right 0" 10.0 rv.(0);
@@ -149,7 +167,7 @@ let left_no_overlap () =
       [| 30.0; 40.0 |]
   in
   match Cairos.Align.align ~strategy:`Left left right with
-  | Error e -> Alcotest.fail e
+  | Error e -> Alcotest.fail (Cairos.Align.err_to_string e)
   | Ok aligned ->
       let lv = Nx.to_array (Cairos.Align.left aligned) in
       Alcotest.(check (float 0.001)) "left 0 preserved" 1.0 lv.(0);
@@ -172,7 +190,7 @@ let asof_backward_exact_match () =
       [| 10.0; 20.0; 30.0 |]
   in
   match Cairos.Align.align ~strategy:(`Asof `Backward) left right with
-  | Error e -> Alcotest.fail e
+  | Error e -> Alcotest.fail (Cairos.Align.err_to_string e)
   | Ok aligned ->
       let rv = Nx.to_array (Cairos.Align.right aligned) in
       Alcotest.(check (float 0.001)) "right 0" 10.0 rv.(0);
@@ -192,7 +210,7 @@ let asof_backward_uses_previous () =
       [| 20.0; 40.0 |]
   in
   match Cairos.Align.align ~strategy:(`Asof `Backward) left right with
-  | Error e -> Alcotest.fail e
+  | Error e -> Alcotest.fail (Cairos.Align.err_to_string e)
   | Ok aligned ->
       let rv = Nx.to_array (Cairos.Align.right aligned) in
       Alcotest.(check bool) "right 0 is nan" true (Float.is_nan rv.(0));
@@ -208,7 +226,7 @@ let asof_backward_no_prior () =
       [| 20.0; 30.0 |]
   in
   match Cairos.Align.align ~strategy:(`Asof `Backward) left right with
-  | Error e -> Alcotest.fail e
+  | Error e -> Alcotest.fail (Cairos.Align.err_to_string e)
   | Ok aligned ->
       let rv = Nx.to_array (Cairos.Align.right aligned) in
       Alcotest.(check bool) "right 0 is nan" true (Float.is_nan rv.(0))
@@ -227,7 +245,7 @@ let asof_forward_exact_match () =
       [| 10.0; 20.0; 30.0 |]
   in
   match Cairos.Align.align ~strategy:(`Asof `Forward) left right with
-  | Error e -> Alcotest.fail e
+  | Error e -> Alcotest.fail (Cairos.Align.err_to_string e)
   | Ok aligned ->
       let rv = Nx.to_array (Cairos.Align.right aligned) in
       Alcotest.(check (float 0.001)) "right 0" 10.0 rv.(0);
@@ -247,7 +265,7 @@ let asof_forward_uses_next () =
       [| 20.0; 40.0 |]
   in
   match Cairos.Align.align ~strategy:(`Asof `Forward) left right with
-  | Error e -> Alcotest.fail e
+  | Error e -> Alcotest.fail (Cairos.Align.err_to_string e)
   | Ok aligned ->
       let rv = Nx.to_array (Cairos.Align.right aligned) in
       Alcotest.(check (float 0.001)) "right 0" 20.0 rv.(0);
@@ -263,7 +281,7 @@ let asof_forward_no_subsequent () =
       [| 10.0; 20.0 |]
   in
   match Cairos.Align.align ~strategy:(`Asof `Forward) left right with
-  | Error e -> Alcotest.fail e
+  | Error e -> Alcotest.fail (Cairos.Align.err_to_string e)
   | Ok aligned ->
       let rv = Nx.to_array (Cairos.Align.right aligned) in
       Alcotest.(check bool) "right 0 is nan" true (Float.is_nan rv.(0))
@@ -282,7 +300,7 @@ let map2_adds_aligned_values () =
       [| 10.0; 20.0; 30.0 |]
   in
   match Cairos.Align.align ~strategy:`Inner left right with
-  | Error e -> Alcotest.fail e
+  | Error e -> Alcotest.fail (Cairos.Align.err_to_string e)
   | Ok aligned ->
       let result = Cairos.Align.map2 ( +. ) aligned in
       let vs = Nx.to_array (Cairos.Series.values result) in
@@ -306,7 +324,7 @@ let map2_propagates_nan () =
       [| 10.0; 30.0 |]
   in
   match Cairos.Align.align ~strategy:`Left left right with
-  | Error e -> Alcotest.fail e
+  | Error e -> Alcotest.fail (Cairos.Align.err_to_string e)
   | Ok aligned ->
       let result = Cairos.Align.map2 ( +. ) aligned in
       let vs = Nx.to_array (Cairos.Series.values result) in
@@ -320,7 +338,7 @@ let gt_indicator a b = if a > b then 1.0 else 0.0
 
 let aligned_inner_exn left right =
   match Cairos.Align.align ~strategy:`Inner left right with
-  | Error e -> Alcotest.fail e
+  | Error e -> Alcotest.fail (Cairos.Align.err_to_string e)
   | Ok aligned -> aligned
 
 let map2_nan_propagates_left_nan () =
@@ -416,7 +434,7 @@ let map2_nan_comparison_yields_nan_not_zero () =
       [| 10.0; 30.0 |]
   in
   match Cairos.Align.align ~strategy:`Left left right with
-  | Error e -> Alcotest.fail e
+  | Error e -> Alcotest.fail (Cairos.Align.err_to_string e)
   | Ok aligned ->
       let vs =
         Nx.to_array
@@ -475,7 +493,9 @@ let inner_empty_left_returns_error () =
   in
   match Cairos.Align.align ~strategy:`Inner left right with
   | Ok _ -> Alcotest.fail "expected Error for empty left with Inner"
-  | Error _ -> ()
+  | Error (Cairos.Align.Empty_index { left_length; right_length }) ->
+      Alcotest.(check int) "left_length" 0 left_length;
+      Alcotest.(check int) "right_length" 2 right_length
 
 let left_empty_left_returns_ok () =
   let left = Test_helpers.make_daily_series [||] [||] in
@@ -485,7 +505,10 @@ let left_empty_left_returns_ok () =
       [| 10.0; 20.0 |]
   in
   match Cairos.Align.align ~strategy:`Left left right with
-  | Error e -> Alcotest.fail ("expected Ok for empty left with Left, got: " ^ e)
+  | Error e ->
+      Alcotest.fail
+        ("expected Ok for empty left with Left, got: "
+        ^ Cairos.Align.err_to_string e)
   | Ok aligned ->
       Alcotest.(check int)
         "aligned length" 0
@@ -499,7 +522,10 @@ let asof_empty_left_returns_ok () =
       [| 10.0; 20.0 |]
   in
   match Cairos.Align.align ~strategy:(`Asof `Backward) left right with
-  | Error e -> Alcotest.fail ("expected Ok for empty left with Asof, got: " ^ e)
+  | Error e ->
+      Alcotest.fail
+        ("expected Ok for empty left with Asof, got: "
+        ^ Cairos.Align.err_to_string e)
   | Ok aligned ->
       Alcotest.(check int)
         "aligned length" 0
@@ -513,7 +539,10 @@ let left_empty_right_all_nan () =
   in
   let right = Test_helpers.make_daily_series [||] [||] in
   match Cairos.Align.align ~strategy:`Left left right with
-  | Error e -> Alcotest.fail ("expected Ok for empty right with Left, got: " ^ e)
+  | Error e ->
+      Alcotest.fail
+        ("expected Ok for empty right with Left, got: "
+        ^ Cairos.Align.err_to_string e)
   | Ok aligned ->
       let rv = Nx.to_array (Cairos.Align.right aligned) in
       Alcotest.(check bool) "right 0 is nan" true (Float.is_nan rv.(0));
@@ -527,7 +556,10 @@ let asof_forward_empty_right_all_nan () =
   in
   let right = Test_helpers.make_daily_series [||] [||] in
   match Cairos.Align.align ~strategy:(`Asof `Forward) left right with
-  | Error e -> Alcotest.fail ("expected Ok for empty right with Asof, got: " ^ e)
+  | Error e ->
+      Alcotest.fail
+        ("expected Ok for empty right with Asof, got: "
+        ^ Cairos.Align.err_to_string e)
   | Ok aligned ->
       let rv = Nx.to_array (Cairos.Align.right aligned) in
       Alcotest.(check bool) "right 0 is nan" true (Float.is_nan rv.(0));
@@ -542,7 +574,9 @@ let inner_empty_right_returns_error () =
   let right = Test_helpers.make_daily_series [||] [||] in
   match Cairos.Align.align ~strategy:`Inner left right with
   | Ok _ -> Alcotest.fail "expected Error for empty right with Inner"
-  | Error _ -> ()
+  | Error (Cairos.Align.Empty_index { left_length; right_length }) ->
+      Alcotest.(check int) "left_length" 2 left_length;
+      Alcotest.(check int) "right_length" 0 right_length
 
 let asof_backward_empty_right_all_nan () =
   let left =
@@ -552,7 +586,10 @@ let asof_backward_empty_right_all_nan () =
   in
   let right = Test_helpers.make_daily_series [||] [||] in
   match Cairos.Align.align ~strategy:(`Asof `Backward) left right with
-  | Error e -> Alcotest.fail ("expected Ok for empty right with Asof, got: " ^ e)
+  | Error e ->
+      Alcotest.fail
+        ("expected Ok for empty right with Asof, got: "
+        ^ Cairos.Align.err_to_string e)
   | Ok aligned ->
       let rv = Nx.to_array (Cairos.Align.right aligned) in
       Alcotest.(check bool) "right 0 is nan" true (Float.is_nan rv.(0));
@@ -570,7 +607,7 @@ let map2_with_asof_backward () =
       [| 20.0; 40.0 |]
   in
   match Cairos.Align.align ~strategy:(`Asof `Backward) left right with
-  | Error e -> Alcotest.fail e
+  | Error e -> Alcotest.fail (Cairos.Align.err_to_string e)
   | Ok aligned ->
       let result = Cairos.Align.map2 ( +. ) aligned in
       let vs = Nx.to_array (Cairos.Series.values result) in
@@ -590,7 +627,7 @@ let inner_identical_timestamps () =
       [| 10.0; 20.0; 30.0 |]
   in
   match Cairos.Align.align ~strategy:`Inner left right with
-  | Error e -> Alcotest.fail e
+  | Error e -> Alcotest.fail (Cairos.Align.err_to_string e)
   | Ok aligned ->
       let idx = Cairos.Align.index aligned in
       Alcotest.(check int) "aligned length" 3 (Cairos.Index.length idx);
@@ -606,7 +643,8 @@ let inner_identical_timestamps () =
 let tests =
   [
     ("inner_overlapping_series", `Quick, inner_overlapping_series);
-    ("inner_disjoint_series", `Quick, inner_disjoint_series);
+    ("align_empty_index_variant", `Quick, align_empty_index_variant);
+    ("align_err_to_string_nonempty", `Quick, align_err_to_string_nonempty);
     ("inner_subset_series", `Quick, inner_subset_series);
     ("inner_single_common_timestamp", `Quick, inner_single_common_timestamp);
     ("left_fills_missing_with_nan", `Quick, left_fills_missing_with_nan);

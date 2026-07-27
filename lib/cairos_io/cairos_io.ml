@@ -1,4 +1,5 @@
 type row = { line_no : int; fields : string array }
+type column_arg = Timestamp_col | Price_col
 
 type err =
   | File_not_found of { path : string; cause : string }
@@ -10,10 +11,17 @@ type err =
   | Non_finite_price of { line_no : int; raw : string }
   | Unparseable_float_in_cell of { line_no : int; col : int; raw : string }
   | Duplicate_header of { col_a : int; col_b : int; name : string }
-  | Invalid_col_arg of string
+  | Invalid_column_arg of { arg : column_arg; value : int }
+  | Duplicate_column_arg of { value : int }
   | Empty_frame_columns of { path : string }
+  | Series_error of Cairos.Series.err
+  | Frame_error of Cairos.Frame.err
 
-let format_err = function
+let column_arg_name = function
+  | Timestamp_col -> "timestamp_col"
+  | Price_col -> "price_col"
+
+let err_to_string = function
   | File_not_found { path; cause } ->
       Printf.sprintf "cairos_io: file not found: %s (%s)" path cause
   | Empty_file { path } -> Printf.sprintf "cairos_io: empty file: %s" path
@@ -37,10 +45,24 @@ let format_err = function
       Printf.sprintf
         "cairos_io: line 1: duplicate header column %S at cols %d and %d" name
         col_a col_b
-  | Invalid_col_arg detail ->
-      Printf.sprintf "cairos_io: invalid argument: %s" detail
+  | Invalid_column_arg { arg; value } ->
+      Printf.sprintf "cairos_io: invalid argument: %s %d < 0"
+        (column_arg_name arg) value
+  | Duplicate_column_arg { value } ->
+      Printf.sprintf
+        "cairos_io: invalid argument: timestamp_col and price_col must differ \
+         (both = %d)"
+        value
   | Empty_frame_columns { path } ->
       Printf.sprintf "cairos_io: no instrument columns in %s" path
+  (* The "internal: " prefix marks a structurally-unreachable failure, matching
+     Resample.err_to_string's two Ptime arms. It is the one renderer convention
+     shared across modules, because it is the only one a reader acts on: it
+     distinguishes bad caller input from a broken library invariant. *)
+  | Series_error e ->
+      Printf.sprintf "cairos_io: internal: %s" (Cairos.Series.err_to_string e)
+  | Frame_error e ->
+      Printf.sprintf "cairos_io: internal: %s" (Cairos.Frame.err_to_string e)
 
 let strip_trailing_cr s =
   let n = String.length s in
@@ -162,33 +184,33 @@ let index_err_to_cairos_io ~offset (index_err : Cairos.Index.err) : err =
 
 let of_csv_with (type freq) ~(freq : freq Cairos.Freq.t) ~header ~timestamp_col
     ~price_col path :
-    ((freq, (float, Bigarray.float64_elt) Nx.t) Cairos.Series.t, string) result
-    =
+    ((freq, (float, Bigarray.float64_elt) Nx.t) Cairos.Series.t, err) result =
   let ( let* ) = Result.bind in
-  let wrap r = Result.map_error format_err r in
-  let invalid detail = Error (format_err (Invalid_col_arg detail)) in
   if timestamp_col < 0 then
-    invalid (Printf.sprintf "timestamp_col %d < 0" timestamp_col)
+    Error (Invalid_column_arg { arg = Timestamp_col; value = timestamp_col })
   else if price_col < 0 then
-    invalid (Printf.sprintf "price_col %d < 0" price_col)
+    Error (Invalid_column_arg { arg = Price_col; value = price_col })
   else if timestamp_col = price_col then
-    invalid
-      (Printf.sprintf "timestamp_col and price_col must differ (both = %d)"
-         timestamp_col)
+    Error (Duplicate_column_arg { value = timestamp_col })
   else
-    let* lines = wrap (read_lines path) in
-    let* parsed = wrap (parse_rows ~header ~path lines) in
+    let* lines = read_lines path in
+    let* parsed = parse_rows ~header ~path lines in
     let rows = Cairos.Nonempty.to_list parsed.rows in
-    let* timestamps, prices = wrap (collect ~timestamp_col ~price_col rows) in
+    let* timestamps, prices = collect ~timestamp_col ~price_col rows in
     let offset = data_line_offset ~header in
     let* index =
       dispatch_index freq timestamps
-      |> Result.map_error (fun e ->
-          format_err (index_err_to_cairos_io ~offset e))
+      |> Result.map_error (index_err_to_cairos_io ~offset)
     in
     let n = Array.length prices in
     let values = Nx.create Nx.float64 [| n |] prices in
+    (* Unreachable: [values] is 1-d of length [n] and [index] was built from
+       an array of the same [n] timestamps, so neither [Series.make] rejection
+       can fire. Handled rather than unwrapped because the library raises
+       nowhere — the variant exists to keep that true, not because a caller
+       can observe it. *)
     Cairos.Series.make index values
+    |> Result.map_error (fun e -> Series_error e)
 
 let of_csv ~freq path =
   of_csv_with ~freq ~header:true ~timestamp_col:0 ~price_col:1 path
@@ -214,7 +236,8 @@ let collect_frame_columns ~header ~timestamp_col reference_fields =
    header-name collision. Caller gates on ~header:true — positional names
    (col_1, col_2, ...) are unique by construction.
 
-   Frame.of_series (lib/frame.ml:18-24) also rejects duplicate column names,
+   Frame.of_series also rejects duplicate column names, via its
+   [Duplicate_column] arm (lib/frame.ml),
    but its message anchors to the name only. We check earlier so the error
    reports both source-file column positions and uses the "duplicate header"
    vocabulary. *)
@@ -284,15 +307,13 @@ let frame_collect ~timestamp_col ~instrument_cols rows =
   | Ok () -> Ok (timestamps, column_values)
 
 let frame_of_csv_with (type freq) ~(freq : freq Cairos.Freq.t) ~header
-    ~timestamp_col path : (freq Cairos.Frame.t, string) result =
+    ~timestamp_col path : (freq Cairos.Frame.t, err) result =
   let ( let* ) = Result.bind in
-  let wrap r = Result.map_error format_err r in
-  let invalid detail = Error (format_err (Invalid_col_arg detail)) in
   if timestamp_col < 0 then
-    invalid (Printf.sprintf "timestamp_col %d < 0" timestamp_col)
+    Error (Invalid_column_arg { arg = Timestamp_col; value = timestamp_col })
   else
-    let* lines = wrap (read_lines path) in
-    let* parsed = wrap (parse_rows ~header ~path lines) in
+    let* lines = read_lines path in
+    let* parsed = parse_rows ~header ~path lines in
     let reference_fields =
       match parsed.header_fields with
       | Some h -> h
@@ -301,9 +322,8 @@ let frame_of_csv_with (type freq) ~(freq : freq Cairos.Freq.t) ~header
     let ncols = Array.length reference_fields in
     if ncols <= timestamp_col then
       Error
-        (format_err
-           (Too_few_columns
-              { line_no = 1; expected = timestamp_col + 1; found = ncols }))
+        (Too_few_columns
+           { line_no = 1; expected = timestamp_col + 1; found = ncols })
     else
       let instrument_cols =
         collect_frame_columns ~header ~timestamp_col reference_fields
@@ -312,19 +332,18 @@ let frame_of_csv_with (type freq) ~(freq : freq Cairos.Freq.t) ~header
         if header then
           match find_duplicate_header instrument_cols with
           | Some (col_a, col_b, name) ->
-              Error (format_err (Duplicate_header { col_a; col_b; name }))
+              Error (Duplicate_header { col_a; col_b; name })
           | None -> Ok ()
         else Ok ()
       in
       let rows = Cairos.Nonempty.to_list parsed.rows in
       let* timestamps, col_values =
-        wrap (frame_collect ~timestamp_col ~instrument_cols rows)
+        frame_collect ~timestamp_col ~instrument_cols rows
       in
       let offset = data_line_offset ~header in
       let* index =
         dispatch_index freq timestamps
-        |> Result.map_error (fun e ->
-            format_err (index_err_to_cairos_io ~offset e))
+        |> Result.map_error (index_err_to_cairos_io ~offset)
       in
       let n = Array.length timestamps in
       let* named =
@@ -334,15 +353,25 @@ let frame_of_csv_with (type freq) ~(freq : freq Cairos.Freq.t) ~header
              (fun acc (name, arr) ->
                let* xs = acc in
                let values = Nx.create Nx.float64 [| n |] arr in
-               let* s = Cairos.Series.make index values in
+               (* Unreachable as in [of_csv_with], and for the same reason. *)
+               let* s =
+                 Cairos.Series.make index values
+                 |> Result.map_error (fun e -> Series_error e)
+               in
                Ok ((name, s) :: xs))
              (Ok [])
       in
       let* named_ne =
         Cairos.Nonempty.of_list (List.rev named)
-        |> Option.to_result ~none:(format_err (Empty_frame_columns { path }))
+        |> Option.to_result ~none:(Empty_frame_columns { path })
       in
+      (* Also unreachable: every column series carries the same [index], and
+         [find_duplicate_header] has already rejected repeated names (under
+         [~header:false] the generated col_N names are unique by
+         construction). Handled for the same reason as the [Series.make]
+         sites above. *)
       Cairos.Frame.of_series named_ne
+      |> Result.map_error (fun e -> Frame_error e)
 
 let frame_of_csv ~freq path =
   frame_of_csv_with ~freq ~header:true ~timestamp_col:0 path

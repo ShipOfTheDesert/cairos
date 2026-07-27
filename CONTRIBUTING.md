@@ -101,7 +101,12 @@ Coding Principles §IX): setup failures `failwith` with a context label rather
 than propagating `result`. The `result`-everywhere rule applies to the core
 library, not to executable harnesses. The `bench/bench_emit.ml` helper
 library is library-shaped code, not a harness, and follows the
-`result`-everywhere rule in full.
+`result`-everywhere rule in full — with one exception, stated rather than
+implied: its four fallible signatures still return `(_, string) result` rather
+than a closed `err` variant. §V's structured-error rule and the
+`lint-string-errors` gate that enforces it are both scoped to `lib/`;
+converting `bench_emit` is deliberate future scope, tracked in the planning
+doc's Open Items.
 
 When writing a new benchmark, copy `bench/bench_series_map.ml` as the
 reference template. One load-bearing detail: **input construction
@@ -298,11 +303,12 @@ does not open.
 The task decomposition that makes this enforceable is
 `docs/adrs/0064-clean-room-task-decomposition.md`.
 
-**A note on the ADR paths cited in this file.** `docs/` is not committed, so
-those citations are breadcrumbs for the maintainer, not links a cloner can
-follow — which is why every clause they point at is also stated substantively
-here. Files under `validation/` are held to the stricter rule: they may not cite
-uncommitted paths at all, because they are read by an auditor or a fresh
+**A note on the ADR and feature-doc paths cited in this file.** `docs/` is not
+committed, so those citations are breadcrumbs for the maintainer, not links a
+cloner can follow — which is why every clause they point at is also stated
+substantively here. Files under `validation/` are held to the stricter rule:
+they may not cite uncommitted paths at all, because they are read by an
+auditor or a fresh
 investigation session with nothing but this repository, and a dangling reference
 there is a dead end rather than a footnote.
 
@@ -349,7 +355,7 @@ handle.
 `result` appears only at genuine runtime boundaries. The sanctioned sites are:
 
 - `Cairos.Index` smart constructors (`daily`, `minute`, `hourly`, `weekly`,
-  `of_unix_floats`) — parse failures and monotonicity violations.
+  `monthly`, `of_unix_floats`) — parse failures and monotonicity violations.
 - `Cairos.Series.make` — index/values length mismatch and 0-dimensional
   values.
 - `Cairos.Align.align` — may produce an empty index.
@@ -364,7 +370,9 @@ Every one of these returns a **structured variant** on its error side, never a
 an aggregate whose non-emptiness is invariant typed `Cairos.Nonempty.t` rather
 than `list`, and a sibling `err_to_string` holding all the prose. Message text
 is not part of the contract — assert on variants, never on substrings. See
-`docs/adrs/0061-structured-error-types-at-library-boundaries.md`.
+`docs/adrs/0061-structured-error-types-at-library-boundaries.md`. A `string` on
+the error side of a public `.mli` is rejected mechanically rather than by
+convention — see the structured-error gate under §X.
 
 Chain with `let*`. Do not unwrap with `Result.get_ok` outside tests.
 
@@ -373,6 +381,15 @@ find yourself wanting to raise, the design is wrong.
 
 In `lib/cairos_engine/` this is enforced mechanically rather than by
 convention — see the engine-assert gate under §X.
+
+A `result` whose failure the caller can prove impossible is still handled, never
+unwrapped. The variant is constructed at its site, rendered by the module's
+`err_to_string`, documented as unreachable with the argument for why, and tested
+by direct construction once the type is public. Public constructors that no
+caller will match are the expected consequence, not an oversight. The worked
+instances are `Resample.err`'s two `Ptime` failures and `Cairos_io.err`'s
+`Series_error` / `Frame_error`; see
+`docs/features/0066-structured-error-migration.md` Decision 4.
 
 - For functions whose precondition is "input list must be non-empty", use
   `Cairos.Nonempty.t` at the function signature rather than a runtime `result`
@@ -461,8 +478,9 @@ scripts/lint-asserts.sh path/to/file.ml    # scan arbitrary files
 ```
 
 A bare `grep` is not sufficient in either direction: it fires on the comment
-that merely names the token — `lib/cairos_io/cairos_io.ml:82` does exactly that
-today — and it is blind to a token hidden inside a string. So
+that merely names the token — the `parse_rows` doc comment in
+`lib/cairos_io/cairos_io.ml` does exactly that today — and it is blind to a
+token hidden inside a string. So
 `scripts/lint-asserts.awk` lexes just enough OCaml to remove non-code text
 first: nested `(* (* *) *)` comments, string literals (including ocamlformat's
 backslash continuations), string literals *inside* comments, `{|quoted|}` and
@@ -514,6 +532,102 @@ in seconds instead of behind a full solve.
 Scope is `lib/cairos_engine/*.ml` and nothing else. `lib/cairos_io/cairos_io.ml`
 (a comment) and `test/unit/cairos_engine/cross_validate_oracles.ml` (real code)
 carry the token today and are deliberately unguarded.
+
+#### The structured-error gate
+
+`just lint-string-errors` — folded into `just lint`, so `just` runs it — fails
+if any public `.mli` under `lib/` puts `string` on the error side of a `result`.
+§V requires every fallible function *in `lib/`* to return a closed `err`
+variant with a sibling `err_to_string`; this is the machine that keeps it
+true. (`bench/bench_emit.mli` is outside both the rule and the gate — see
+§Benchmarks.) Convention
+alone was not enough: two exceptions were recorded and left standing while eight
+signatures still returned prose, and the next feature that adds a fallible
+function re-breaks the property for free.
+
+```bash
+just lint-string-errors                          # self-test, then scan lib/
+scripts/lint-string-errors.sh path/to/file.mli   # scan arbitrary files
+```
+
+A bare `grep` is not sufficient in **three** directions here. The first two are
+the engine-assert gate's: it fires on the doc comment that merely explains why
+a surface stopped returning `(_, string) result`, and it is blind to the shape
+hidden inside a string literal. So `scripts/lint-string-errors.awk` carries the
+same OCaml lexer and strips non-code text first.
+
+The third direction is specific to this gate. Every `.mli` it scans is
+ocamlformat output, and ocamlformat splits a `result` whose success side is wide
+across three lines:
+
+```ocaml
+val frame_of_csv_with :
+  path:string ->
+  ( ('freq, (float, Bigarray.float64_elt) Nx.t, [ `Column_major ]) t,
+    string )
+  result
+```
+
+No line there contains `string) result`, so a line-at-a-time scan reports the
+file clean — a false negative that arrives silently, the day a signature grows.
+The gate therefore matches over the whole stripped file rather than line by
+line, and reports against the line the offending `string` sits on.
+
+**Exit codes**, the same three-valued contract as `lint-asserts`:
+
+| Code | Meaning |
+|------|---------|
+| `0` | clean |
+| `1` | at least one `string` error side in a public signature |
+| `2` | tooling failure — bad arguments, or the lexer desynchronised |
+
+**Self-test.** `just lint-string-errors` runs five fixtures under
+`test/lint/fixtures/` through the real script before it scans the real tree, and
+aborts if any of them behaves differently from its contract:
+
+| Fixture | Must exit |
+|---------|-----------|
+| `string_error_violation.mli.fixture` | `1` — a `(_, string) result` on one line |
+| `string_error_wrapped.mli.fixture` | `1` — the same violation, split by ocamlformat across three lines |
+| `string_error_qualified.mli.fixture` | `1` — the same violation spelled `Stdlib.result` and `Result.t`, flat and wrapped |
+| `string_error_clean.mli.fixture` | `0` — the shape only in comments, strings, and near-miss types (`(string, err) result`, `('freq, string) Series.t`, `result_summary`, `(int, err_string) result`) |
+| `string_error_truncated.mli.fixture` | `2` — unterminated comment, lexer out of sync |
+
+The fixtures are `.fixture` rather than `.mli` for a stronger reason than the
+assert gate's: `dune fmt` reflows every `.ml` and `.mli` dune can see, anywhere
+in the tree, and the wrapped fixture is pinned to an exact line break.
+
+**Portability.** POSIX awk only. Verified to give identical exit codes and
+byte-identical output on all five fixtures and the real tree under gawk 5.4.0,
+`gawk --posix`, `gawk --traditional`, mawk 1.3.4 and busybox awk — mawk being
+what `ubuntu-latest` actually runs.
+
+**In CI** the gate runs as the `string-error-gate` job in both
+`.github/workflows/pr.yaml` and `main.yaml`, for the same reasons the
+`engine-assert-gate` job is in both, and invoking the `just` recipe directly so
+the self-test cannot drift out of CI.
+
+Scope is the public `.mli` files under `lib/` — `lib/*.mli` and `lib/*/*.mli`,
+thirteen files today. Implementation files are not scanned: the criterion is
+about the surface a caller sees, and a `string` error inside an `.ml` is
+invisible once the `.mli` constrains it. The gate recognises `result`,
+`Stdlib.result` and `Result.t`. The qualified spellings are not hypothetical:
+`lib/cairos_engine/cairos_engine.mli` declares `type 'freq result = private
+{...}`, which shadows `Stdlib.result` for the rest of that signature, so
+`Backtest.run` *cannot* spell its return type bare. A gate matching only the
+bare form would be permanently blind to the engine.
+
+Two things it cannot see, stated rather than left inferred:
+
+- **A type alias.** `type err = string` followed by `val f : ... -> (int, err)
+  result` launders a prose error side past any text-level scan, because the
+  offending token is not in the signature. Catching it needs type information,
+  which means `ocaml-lsp`, not awk.
+- **`bench/bench_emit.mli`.** The paragraph in §Benchmarks calling `bench_emit`
+  library-shaped code predates this gate, and its four fallible signatures still
+  return `(_, string) result`. §V's rule is scoped to `lib/`, and so is the
+  gate; converting `bench_emit` is a deliberate future change, tracked in the
+  planning doc's Open Items, not an omission the gate is hiding.
 
 ## Commit Style
 

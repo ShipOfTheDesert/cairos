@@ -47,8 +47,14 @@ let make_series_from_floats : type freq.
   let n = Array.length xs in
   let ts = Array.init n ts_at in
   (* Unreachable: synthetic strictly-increasing finite POSIX seconds.
-     Generators must terminate unreachable [result] branches with
-     [failwith], not propagate [result], or QCheck's shrinker mis-reports. *)
+     Generators must terminate unreachable [result] branches rather than
+     propagate them — the type here is ['a QCheck.arbitrary], not
+     [('a, _) result QCheck.arbitrary]. [failwith] rather than [Alcotest.fail]
+     so this library needs no alcotest dependency, and because "Alcotest
+     assertion failure" would describe an assertion that was never made. The
+     two behave identically to QCheck otherwise: an exception raised during
+     generation aborts generation without shrinking, whichever it is. See
+     ocaml/qcheck-generator-failwith.md. *)
   let idx =
     match Cairos.Index.of_unix_floats freq ts with
     | Ok i -> i
@@ -60,7 +66,8 @@ let make_series_from_floats : type freq.
      See comment above. *)
   match Cairos.Series.make idx values with
   | Ok s -> s
-  | Error e -> failwith ("qcheck_gen: Series.make: " ^ e)
+  | Error e ->
+      failwith ("qcheck_gen: Series.make: " ^ Cairos.Series.err_to_string e)
 
 (* Build a daily series whose first timestamp is at
    [epoch_2024_01_01_utc + start_day * 86_400.0]. Used by
@@ -81,7 +88,7 @@ let make_offset_daily_series ~start_day xs =
   let values = Nx.create Nx.float64 [| n |] xs in
   match Cairos.Series.make idx values with
   | Ok s -> s
-  | Error e -> failwith ("qcheck_gen.offset: " ^ e)
+  | Error e -> failwith ("qcheck_gen.offset: " ^ Cairos.Series.err_to_string e)
 
 (* Recover the [start_day] offset of a daily series whose timestamps were
    built via [epoch + k * 86_400] for some [k]. Used by the
@@ -342,7 +349,9 @@ let frame_from_rows ~n_cols rows =
       | Error e ->
           (* Unreachable: column names are programmatically distinct and every
              column shares the same epoch-anchored daily index. *)
-          failwith ("qcheck_gen.frame_from_rows: of_series: " ^ e))
+          failwith
+            ("qcheck_gen.frame_from_rows: of_series: "
+            ^ Cairos.Frame.err_to_string e))
 
 let frame_print_shape f =
   let cols = Cairos.Frame.columns f in

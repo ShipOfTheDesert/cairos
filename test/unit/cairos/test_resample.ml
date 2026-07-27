@@ -3,6 +3,8 @@ let ptime_exn s =
   | Ok (t, _, _) -> t
   | Error _ -> Alcotest.fail (Printf.sprintf "bad rfc3339: %s" s)
 
+let name_of_any = Test_helpers.name_of_any
+
 (* --- Frequency transitions (using Last aggregation) --- *)
 
 let daily_to_weekly () =
@@ -24,7 +26,7 @@ let daily_to_weekly () =
       [| 1.0; 2.0; 3.0; 4.0; 5.0; 6.0; 7.0; 8.0; 9.0; 10.0 |]
   in
   match Cairos.Resample.resample ~agg:`Last Cairos.Freq.Week s with
-  | Error e -> Alcotest.fail e
+  | Error e -> Alcotest.fail (Cairos.Resample.err_to_string e)
   | Ok result ->
       Alcotest.(check int) "2 weekly points" 2 (Cairos.Series.length result);
       let vs = Nx.to_array (Cairos.Series.values result) in
@@ -58,7 +60,7 @@ let minute_to_hourly () =
   let values = Array.init 120 (fun i -> Float.of_int (i + 1)) in
   let s = Test_helpers.make_minute_series dates values in
   match Cairos.Resample.resample ~agg:`Last Cairos.Freq.Hour s with
-  | Error e -> Alcotest.fail e
+  | Error e -> Alcotest.fail (Cairos.Resample.err_to_string e)
   | Ok result ->
       Alcotest.(check int) "2 hourly points" 2 (Cairos.Series.length result);
       let vs = Nx.to_array (Cairos.Series.values result) in
@@ -76,7 +78,7 @@ let minute_to_daily () =
   let values = Array.init 1440 (fun i -> Float.of_int (i + 1)) in
   let s = Test_helpers.make_minute_series dates values in
   match Cairos.Resample.resample ~agg:`Last Cairos.Freq.Day s with
-  | Error e -> Alcotest.fail e
+  | Error e -> Alcotest.fail (Cairos.Resample.err_to_string e)
   | Ok result ->
       Alcotest.(check int) "1 daily point" 1 (Cairos.Series.length result);
       let vs = Nx.to_array (Cairos.Series.values result) in
@@ -91,7 +93,7 @@ let minute_to_weekly () =
   let values = Array.init 14 (fun i -> Float.of_int (i + 1)) in
   let s = Test_helpers.make_minute_series dates values in
   match Cairos.Resample.resample ~agg:`Last Cairos.Freq.Week s with
-  | Error e -> Alcotest.fail e
+  | Error e -> Alcotest.fail (Cairos.Resample.err_to_string e)
   | Ok result ->
       Alcotest.(check int) "2 weekly points" 2 (Cairos.Series.length result);
       let vs = Nx.to_array (Cairos.Series.values result) in
@@ -109,7 +111,7 @@ let hourly_to_daily () =
   let values = Array.init 48 (fun i -> Float.of_int (i + 1)) in
   let s = Test_helpers.make_hourly_series dates values in
   match Cairos.Resample.resample ~agg:`Last Cairos.Freq.Day s with
-  | Error e -> Alcotest.fail e
+  | Error e -> Alcotest.fail (Cairos.Resample.err_to_string e)
   | Ok result ->
       Alcotest.(check int) "2 daily points" 2 (Cairos.Series.length result);
       let vs = Nx.to_array (Cairos.Series.values result) in
@@ -124,7 +126,7 @@ let hourly_to_weekly () =
   let values = Array.init 14 (fun i -> Float.of_int (i + 1)) in
   let s = Test_helpers.make_hourly_series dates values in
   match Cairos.Resample.resample ~agg:`Last Cairos.Freq.Week s with
-  | Error e -> Alcotest.fail e
+  | Error e -> Alcotest.fail (Cairos.Resample.err_to_string e)
   | Ok result ->
       Alcotest.(check int) "2 weekly points" 2 (Cairos.Series.length result);
       let vs = Nx.to_array (Cairos.Series.values result) in
@@ -140,7 +142,7 @@ let agg_first () =
       [| 10.0; 20.0; 30.0; 40.0; 50.0 |]
   in
   match Cairos.Resample.resample ~agg:`First Cairos.Freq.Week s with
-  | Error e -> Alcotest.fail e
+  | Error e -> Alcotest.fail (Cairos.Resample.err_to_string e)
   | Ok result ->
       let vs = Nx.to_array (Cairos.Series.values result) in
       Alcotest.(check (float 0.001)) "first" 10.0 vs.(0)
@@ -152,7 +154,7 @@ let agg_last () =
       [| 10.0; 20.0; 30.0; 40.0; 50.0 |]
   in
   match Cairos.Resample.resample ~agg:`Last Cairos.Freq.Week s with
-  | Error e -> Alcotest.fail e
+  | Error e -> Alcotest.fail (Cairos.Resample.err_to_string e)
   | Ok result ->
       let vs = Nx.to_array (Cairos.Series.values result) in
       Alcotest.(check (float 0.001)) "last" 50.0 vs.(0)
@@ -164,7 +166,7 @@ let agg_sum () =
       [| 10.0; 20.0; 30.0; 40.0; 50.0 |]
   in
   match Cairos.Resample.resample ~agg:`Sum Cairos.Freq.Week s with
-  | Error e -> Alcotest.fail e
+  | Error e -> Alcotest.fail (Cairos.Resample.err_to_string e)
   | Ok result ->
       let vs = Nx.to_array (Cairos.Series.values result) in
       Alcotest.(check (float 0.001)) "sum" 150.0 vs.(0)
@@ -176,7 +178,7 @@ let agg_mean () =
       [| 10.0; 20.0; 30.0; 40.0; 50.0 |]
   in
   match Cairos.Resample.resample ~agg:`Mean Cairos.Freq.Week s with
-  | Error e -> Alcotest.fail e
+  | Error e -> Alcotest.fail (Cairos.Resample.err_to_string e)
   | Ok result ->
       let vs = Nx.to_array (Cairos.Series.values result) in
       Alcotest.(check (float 0.001)) "mean" 30.0 vs.(0)
@@ -188,7 +190,7 @@ let agg_min () =
       [| 30.0; 10.0; 50.0; 20.0; 40.0 |]
   in
   match Cairos.Resample.resample ~agg:`Min Cairos.Freq.Week s with
-  | Error e -> Alcotest.fail e
+  | Error e -> Alcotest.fail (Cairos.Resample.err_to_string e)
   | Ok result ->
       let vs = Nx.to_array (Cairos.Series.values result) in
       Alcotest.(check (float 0.001)) "min" 10.0 vs.(0)
@@ -200,12 +202,25 @@ let agg_max () =
       [| 30.0; 10.0; 50.0; 20.0; 40.0 |]
   in
   match Cairos.Resample.resample ~agg:`Max Cairos.Freq.Week s with
-  | Error e -> Alcotest.fail e
+  | Error e -> Alcotest.fail (Cairos.Resample.err_to_string e)
   | Ok result ->
       let vs = Nx.to_array (Cairos.Series.values result) in
       Alcotest.(check (float 0.001)) "max" 50.0 vs.(0)
 
 (* --- Error cases --- *)
+
+(* Every rejection below asserts the variant rather than [Error _]: message
+   prose is not contractual, so a substring assertion would pin something the
+   library does not promise. The sibling variants are enumerated rather than
+   collapsed into a wildcard, so a new [Resample.err] constructor breaks this
+   file loudly instead of being silently absorbed. *)
+let check_target_not_lower what result =
+  match result with
+  | Ok _ -> Alcotest.fail (Printf.sprintf "%s: expected Error" what)
+  | Error (Cairos.Resample.Target_not_lower _) -> ()
+  | Error (Cairos.Resample.Unrepresentable_week_start _)
+  | Error (Cairos.Resample.Unrepresentable_bucket_timestamp _) ->
+      Alcotest.fail (Printf.sprintf "%s: expected Target_not_lower" what)
 
 let rejects_upsampling () =
   let s =
@@ -213,9 +228,8 @@ let rejects_upsampling () =
       [| "2024-01-01"; "2024-01-08" |]
       [| 1.0; 2.0 |]
   in
-  match Cairos.Resample.resample ~agg:`Last Cairos.Freq.Day s with
-  | Ok _ -> Alcotest.fail "expected Error for upsampling"
-  | Error _ -> ()
+  check_target_not_lower "weekly -> daily"
+    (Cairos.Resample.resample ~agg:`Last Cairos.Freq.Day s)
 
 let rejects_same_frequency () =
   let s =
@@ -223,13 +237,70 @@ let rejects_same_frequency () =
       [| "2024-01-01"; "2024-01-02" |]
       [| 1.0; 2.0 |]
   in
-  match Cairos.Resample.resample ~agg:`Last Cairos.Freq.Day s with
-  | Ok _ -> Alcotest.fail "expected Error for same frequency"
-  | Error _ -> ()
+  check_target_not_lower "daily -> daily"
+    (Cairos.Resample.resample ~agg:`Last Cairos.Freq.Day s)
+
+(* An empty source series is still rejected on an upsample. [resample]
+   short-circuits a zero-length input to an empty [Ok] output, so this pins the
+   order of the two checks: the rank guard runs first. Reversing them turns an
+   invalid upsample into a silent [Ok] for exactly the inputs no other rejection
+   test covers — all four use non-empty series, and [empty_series] pairs its
+   empty input with a valid downsample. *)
+let rejects_upsampling_on_empty_series () =
+  let s = Test_helpers.make_weekly_series [||] [||] in
+  check_target_not_lower "empty weekly -> daily"
+    (Cairos.Resample.resample ~agg:`Last Cairos.Freq.Day s)
+
+(* The rejection payload carries both frequency witnesses. Weekly -> hourly is
+   used rather than any pair above because its two witnesses are distinct: a
+   construction site that filled [source] from the target (or vice versa) still
+   passes a same-frequency or symmetric fixture. *)
+let resample_target_not_lower_variant () =
+  let s =
+    Test_helpers.make_weekly_series
+      [| "2024-01-01"; "2024-01-08" |]
+      [| 1.0; 2.0 |]
+  in
+  match Cairos.Resample.resample ~agg:`Last Cairos.Freq.Hour s with
+  | Ok _ -> Alcotest.fail "expected Error for weekly -> hourly upsample"
+  | Error (Cairos.Resample.Target_not_lower { source; target }) ->
+      Alcotest.(check string) "source witness" "Week" (name_of_any source);
+      Alcotest.(check string) "target witness" "Hour" (name_of_any target)
+  | Error (Cairos.Resample.Unrepresentable_week_start _)
+  | Error (Cairos.Resample.Unrepresentable_bucket_timestamp _) ->
+      Alcotest.fail "expected Target_not_lower"
+
+(* Every constructor renders something, on one line. The two
+   [Unrepresentable_*] variants are unreachable through [resample] but their
+   renderer arms are not — they are constructed directly here, which is the
+   only way those arms are exercised at all. Asserts existence and shape only:
+   message text is not contractual. *)
+let resample_err_to_string_nonempty () =
+  let errs =
+    [
+      Cairos.Resample.Target_not_lower
+        {
+          source = Cairos.Freq.Any Cairos.Freq.Week;
+          target = Cairos.Freq.Any Cairos.Freq.Day;
+        };
+      Cairos.Resample.Unrepresentable_week_start
+        { timestamp = ptime_exn "2024-01-03T14:32:11Z" };
+      Cairos.Resample.Unrepresentable_bucket_timestamp
+        { year = 2024; month = 1; day = 1; hour = 0 };
+    ]
+  in
+  List.iter
+    (fun e ->
+      let msg = Cairos.Resample.err_to_string e in
+      Alcotest.(check bool) "non-empty message" true (String.length msg > 0);
+      Alcotest.(check bool)
+        "single-line message" true
+        (not (String.contains msg '\n')))
+    errs
 
 (* Daily -> Minute is a multi-step upsample (rank gap of 2). The contract
-   under test is a single rank-guard branch at lib/resample.ml:98 that does
-   not depend on input shape, length, or values, so the rejection is
+   under test is a single branch of the [freq_rank] guard (lib/resample.ml)
+   that does not depend on input shape, length, or values, so the rejection is
    deterministic — a single fixed input is sufficient to pin it. Originally
    landed as a [~count:200] QCheck property in
    test_resample_props.ml, then demoted to a
@@ -242,23 +313,22 @@ let rejects_upsampling_daily_to_minute () =
       [| "2024-01-01"; "2024-01-02"; "2024-01-03" |]
       [| 1.0; 2.0; 3.0 |]
   in
-  match Cairos.Resample.resample ~agg:`Last Cairos.Freq.Minute s with
-  | Ok _ -> Alcotest.fail "expected Error for daily -> minute upsample"
-  | Error _ -> ()
+  check_target_not_lower "daily -> minute"
+    (Cairos.Resample.resample ~agg:`Last Cairos.Freq.Minute s)
 
 (* --- Edge cases --- *)
 
 let empty_series () =
   let s = Test_helpers.make_daily_series [||] [||] in
   match Cairos.Resample.resample ~agg:`Last Cairos.Freq.Week s with
-  | Error e -> Alcotest.fail e
+  | Error e -> Alcotest.fail (Cairos.Resample.err_to_string e)
   | Ok result ->
       Alcotest.(check int) "empty output" 0 (Cairos.Series.length result)
 
 let single_element () =
   let s = Test_helpers.make_daily_series [| "2024-01-01" |] [| 42.0 |] in
   match Cairos.Resample.resample ~agg:`Mean Cairos.Freq.Week s with
-  | Error e -> Alcotest.fail e
+  | Error e -> Alcotest.fail (Cairos.Resample.err_to_string e)
   | Ok result ->
       Alcotest.(check int) "1 output point" 1 (Cairos.Series.length result);
       let vs = Nx.to_array (Cairos.Series.values result) in
@@ -283,7 +353,7 @@ let sparse_data_skips_empty_buckets () =
       [| 1.0; 2.0; 3.0; 4.0; 5.0; 6.0; 7.0; 8.0; 9.0; 10.0 |]
   in
   match Cairos.Resample.resample ~agg:`Last Cairos.Freq.Week s with
-  | Error e -> Alcotest.fail e
+  | Error e -> Alcotest.fail (Cairos.Resample.err_to_string e)
   | Ok result ->
       Alcotest.(check int)
         "2 weekly points (gap skipped)" 2
@@ -314,7 +384,7 @@ let week_53_boundary () =
       [| 1.0; 2.0; 3.0; 4.0; 5.0; 6.0; 7.0; 8.0; 9.0 |]
   in
   match Cairos.Resample.resample ~agg:`Last Cairos.Freq.Week s with
-  | Error e -> Alcotest.fail e
+  | Error e -> Alcotest.fail (Cairos.Resample.err_to_string e)
   | Ok result ->
       Alcotest.(check int) "2 weekly buckets" 2 (Cairos.Series.length result);
       let vs = Nx.to_array (Cairos.Series.values result) in
@@ -338,7 +408,7 @@ let year_boundary_weekly () =
       [| 10.0; 20.0; 30.0 |]
   in
   match Cairos.Resample.resample ~agg:`Sum Cairos.Freq.Week s with
-  | Error e -> Alcotest.fail e
+  | Error e -> Alcotest.fail (Cairos.Resample.err_to_string e)
   | Ok result ->
       Alcotest.(check int) "1 weekly bucket" 1 (Cairos.Series.length result);
       let vs = Nx.to_array (Cairos.Series.values result) in
@@ -359,7 +429,7 @@ let daily_to_monthly () =
       [| 1.0; 2.0; 3.0; 4.0; 5.0 |]
   in
   match Cairos.Resample.resample ~agg:`Last Cairos.Freq.Month s with
-  | Error e -> Alcotest.fail e
+  | Error e -> Alcotest.fail (Cairos.Resample.err_to_string e)
   | Ok result ->
       Alcotest.(check int) "2 monthly points" 2 (Cairos.Series.length result);
       let vs = Nx.to_array (Cairos.Series.values result) in
@@ -385,7 +455,7 @@ let daily_to_monthly_year_boundary () =
       [| 10.0; 20.0; 30.0 |]
   in
   match Cairos.Resample.resample ~agg:`Last Cairos.Freq.Month s with
-  | Error e -> Alcotest.fail e
+  | Error e -> Alcotest.fail (Cairos.Resample.err_to_string e)
   | Ok result ->
       Alcotest.(check int) "3 monthly buckets" 3 (Cairos.Series.length result);
       let vs = Nx.to_array (Cairos.Series.values result) in
@@ -416,7 +486,7 @@ let daily_to_monthly_variable_month_length () =
       [| 1.0; 2.0; 3.0; 4.0; 5.0 |]
   in
   match Cairos.Resample.resample ~agg:`Sum Cairos.Freq.Month s with
-  | Error e -> Alcotest.fail e
+  | Error e -> Alcotest.fail (Cairos.Resample.err_to_string e)
   | Ok result ->
       Alcotest.(check int) "3 monthly buckets" 3 (Cairos.Series.length result);
       let vs = Nx.to_array (Cairos.Series.values result) in
@@ -438,7 +508,7 @@ let daily_to_monthly_label_not_in_source () =
       [| 1.0; 2.0; 3.0 |]
   in
   match Cairos.Resample.resample ~agg:`Last Cairos.Freq.Month s with
-  | Error e -> Alcotest.fail e
+  | Error e -> Alcotest.fail (Cairos.Resample.err_to_string e)
   | Ok result ->
       Alcotest.(check int) "2 monthly buckets" 2 (Cairos.Series.length result);
       let ts = Cairos.Index.timestamps (Cairos.Series.index result) in
@@ -466,7 +536,7 @@ let weekly_to_monthly () =
       [| 1.0; 2.0; 3.0; 4.0; 5.0; 6.0 |]
   in
   match Cairos.Resample.resample ~agg:`Last Cairos.Freq.Month s with
-  | Error e -> Alcotest.fail e
+  | Error e -> Alcotest.fail (Cairos.Resample.err_to_string e)
   | Ok result ->
       Alcotest.(check int) "2 monthly buckets" 2 (Cairos.Series.length result);
       let vs = Nx.to_array (Cairos.Series.values result) in
@@ -491,9 +561,8 @@ let rejects_monthly_to_weekly () =
       [| "2024-01-01"; "2024-02-01"; "2024-03-01" |]
       [| 1.0; 2.0; 3.0 |]
   in
-  match Cairos.Resample.resample ~agg:`Last Cairos.Freq.Week s with
-  | Ok _ -> Alcotest.fail "expected Error for monthly -> weekly upsample"
-  | Error _ -> ()
+  check_target_not_lower "monthly -> weekly"
+    (Cairos.Resample.resample ~agg:`Last Cairos.Freq.Week s)
 
 (* --- Test list --- *)
 
@@ -516,6 +585,13 @@ let tests =
     ( "rejects_upsampling_daily_to_minute",
       `Quick,
       rejects_upsampling_daily_to_minute );
+    ( "rejects_upsampling_on_empty_series",
+      `Quick,
+      rejects_upsampling_on_empty_series );
+    ( "resample_target_not_lower_variant",
+      `Quick,
+      resample_target_not_lower_variant );
+    ("resample_err_to_string_nonempty", `Quick, resample_err_to_string_nonempty);
     ("empty_series", `Quick, empty_series);
     ("single_element", `Quick, single_element);
     ("sparse_data_skips_empty_buckets", `Quick, sparse_data_skips_empty_buckets);

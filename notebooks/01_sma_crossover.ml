@@ -45,8 +45,6 @@
 (* %% vscode={"languageId": "ocaml"} *)
 open Cairos
 
-let ( let* ) = Result.bind
-
 (* %% [markdown] *)
 (* ## Constructing a Daily Price Series *)
 (* *)
@@ -183,15 +181,22 @@ let prices =
       139.0;
     |]
   in
-  let* idx =
-    Result.map_error Cairos.Index.err_to_string (Index.daily dates)
+  let idx =
+    match Index.daily dates with
+    | Ok idx -> idx
+    | Error e ->
+        failwith
+          (Printf.sprintf "Price index construction failed: %s"
+             (Cairos.Index.err_to_string e))
   in
-  Series.make idx (Nx.create Nx.float64 [| Array.length values |] values)
-
-let prices =
-  match prices with
+  match
+    Series.make idx (Nx.create Nx.float64 [| Array.length values |] values)
+  with
   | Ok s -> s
-  | Error e -> failwith (Printf.sprintf "Price series construction failed: %s" e)
+  | Error e ->
+      failwith
+        (Printf.sprintf "Price series construction failed: %s"
+           (Series.err_to_string e))
 
 let () = Cairos_jupyter.pp_series "prices" prices
 
@@ -219,7 +224,9 @@ let () =
 let aligned_smas =
   match Align.align ~strategy:`Inner sma_20 sma_50 with
   | Ok a -> a
-  | Error e -> failwith (Printf.sprintf "SMA alignment failed: %s" e)
+  | Error e ->
+      failwith
+        (Printf.sprintf "SMA alignment failed: %s" (Align.err_to_string e))
 
 let spread = Align.map2 (fun a b -> a -. b) aligned_smas
 
@@ -235,7 +242,8 @@ let () = Cairos_jupyter.pp_series ~n:5 "spread" spread
 let weekly_prices =
   match Resample.resample ~agg:`Last Freq.Week prices with
   | Ok w -> w
-  | Error e -> failwith (Printf.sprintf "Resample failed: %s" e)
+  | Error e ->
+      failwith (Printf.sprintf "Resample failed: %s" (Resample.err_to_string e))
 
 let () = Cairos_jupyter.pp_series ~n:5 "weekly_prices" weekly_prices
 
@@ -255,7 +263,9 @@ let frame =
          [ ("sma_20", sma_20); ("sma_50", sma_50) ])
   with
   | Ok f -> f
-  | Error e -> failwith (Printf.sprintf "Frame construction failed: %s" e)
+  | Error e ->
+      failwith
+        (Printf.sprintf "Frame construction failed: %s" (Frame.err_to_string e))
 
 let () = Cairos_jupyter.pp_frame frame
 

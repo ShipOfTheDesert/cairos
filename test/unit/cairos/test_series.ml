@@ -2,7 +2,7 @@ let epoch_2024_01_01_utc = 1_704_067_200.0
 
 (* The two [failwith]s below are unreachable by construction (synthetic UTC
    epoch + length-matched [Nx.t]) and are intentional: a
-   generator must return [Series.t], not [(_, string) result]. Do not "fix"
+   generator must return [Series.t], not a [result]. Do not "fix"
    by propagating [result] — that breaks the QCheck arbitrary contract. *)
 let make_daily_series_from_floats (xs : float array) :
     ([ `Daily ], (float, Bigarray.float64_elt) Nx.t) Cairos.Series.t =
@@ -18,7 +18,7 @@ let make_daily_series_from_floats (xs : float array) :
   let values = Nx.create Nx.float64 [| n |] xs in
   match Cairos.Series.make idx values with
   | Ok s -> s
-  | Error e -> failwith ("generator series: " ^ e)
+  | Error e -> failwith ("generator series: " ^ Cairos.Series.err_to_string e)
 
 let daily_float_series_arb :
     ([ `Daily ], (float, Bigarray.float64_elt) Nx.t) Cairos.Series.t
@@ -91,29 +91,34 @@ let make_succeeds_with_matching_lengths () =
   | Ok idx -> (
       let values = Nx.create Nx.float64 [| 3 |] [| 10.0; 20.0; 30.0 |] in
       match Cairos.Series.make idx values with
-      | Error e -> Alcotest.fail e
+      | Error e -> Alcotest.fail (Cairos.Series.err_to_string e)
       | Ok s -> Alcotest.(check int) "length is 3" 3 (Cairos.Series.length s))
 
-let make_fails_with_mismatched_lengths () =
+(* The index and values lengths differ from each other (3 vs 5) so the payload
+   assertions fail against an implementation that swaps the two fields. *)
+let series_make_length_mismatch_variant () =
   match Cairos.Index.daily [| "2024-01-01"; "2024-01-02"; "2024-01-03" |] with
   | Error e -> Alcotest.fail (Cairos.Index.err_to_string e)
   | Ok idx -> (
       let values = Nx.create Nx.float64 [| 5 |] [| 1.0; 2.0; 3.0; 4.0; 5.0 |] in
       match Cairos.Series.make idx values with
       | Ok _ -> Alcotest.fail "expected Error for mismatched lengths"
-      | Error _ -> ())
+      | Error Cairos.Series.Zero_dimensional_values ->
+          Alcotest.fail "expected Length_mismatch, got Zero_dimensional_values"
+      | Error (Cairos.Series.Length_mismatch { index_length; values_length }) ->
+          Alcotest.(check int) "index_length" 3 index_length;
+          Alcotest.(check int) "values_length" 5 values_length)
 
 (* A 0-dimensional values tensor has no leading axis to match the index
    against, so [Series.make] rejects it instead of indexing [Nx.shape]'s empty
    array, which raises [Invalid_argument].
 
-   The empty-index arm is the load-bearing one. Against a 3-element index an
-   implementation that silently read a 0-d tensor as "length 0" would also
-   return [Error], via the length mismatch, so that arm alone cannot tell the
-   guard from the mismatch check. Against an empty index the same wrong
-   implementation returns [Ok], so [Error] there can only mean the guard
-   fired. *)
-let series_make_zero_dim_returns_error () =
+   Both arms discriminate the guard from the mismatch check, by different
+   means. Against a 3-element index an implementation that silently read a 0-d
+   tensor as "length 0" also returns [Error], and only the variant tells the
+   two apart. Against an empty index that same implementation returns [Ok], so
+   the arm holds even for a caller who checks nothing but [Result.is_error]. *)
+let series_make_zero_dim_variant () =
   let index_of names =
     match Cairos.Index.daily names with
     | Ok idx -> idx
@@ -122,11 +127,30 @@ let series_make_zero_dim_returns_error () =
   let rejects label idx =
     match Cairos.Series.make idx (Nx.scalar Nx.float64 42.0) with
     | Ok _ -> Alcotest.fail ("expected Error for 0-d values against " ^ label)
-    | Error _ -> ()
+    | Error (Cairos.Series.Length_mismatch _) ->
+        Alcotest.fail
+          ("expected Zero_dimensional_values for 0-d values against " ^ label)
+    | Error Cairos.Series.Zero_dimensional_values -> ()
   in
   rejects "an empty index" (index_of [||]);
   rejects "a 3-element index"
     (index_of [| "2024-01-01"; "2024-01-02"; "2024-01-03" |])
+
+(* Message prose is not contractual, so this asserts only that every
+   constructor renders something a caller can put in a log line — never that
+   the message contains particular words. *)
+let series_err_to_string_nonempty () =
+  let renders label e =
+    let msg = Cairos.Series.err_to_string e in
+    Alcotest.(check bool) (label ^ " is non-empty") true (String.length msg > 0);
+    Alcotest.(check bool)
+      (label ^ " is single-line")
+      true
+      (not (String.contains msg '\n'))
+  in
+  renders "Length_mismatch"
+    (Cairos.Series.Length_mismatch { index_length = 3; values_length = 5 });
+  renders "Zero_dimensional_values" Cairos.Series.Zero_dimensional_values
 
 let slice_produces_correct_subseries () =
   match
@@ -137,7 +161,7 @@ let slice_produces_correct_subseries () =
   | Ok idx -> (
       let values = Nx.create Nx.float64 [| 4 |] [| 10.0; 20.0; 30.0; 40.0 |] in
       match Cairos.Series.make idx values with
-      | Error e -> Alcotest.fail e
+      | Error e -> Alcotest.fail (Cairos.Series.err_to_string e)
       | Ok s ->
           let sliced = Cairos.Series.slice ~start:1 ~stop:3 s in
           Alcotest.(check int) "sliced length" 2 (Cairos.Series.length sliced);
@@ -151,7 +175,7 @@ let map_transforms_values_and_preserves_index () =
   | Ok idx -> (
       let values = Nx.create Nx.float64 [| 3 |] [| 1.0; 2.0; 3.0 |] in
       match Cairos.Series.make idx values with
-      | Error e -> Alcotest.fail e
+      | Error e -> Alcotest.fail (Cairos.Series.err_to_string e)
       | Ok s ->
           let doubled = Cairos.Series.map (fun v -> Nx.mul_s v 2.0) s in
           let vs = Nx.to_array (Cairos.Series.values doubled) in
@@ -177,7 +201,7 @@ let empty_series_succeeds () =
   | Ok idx -> (
       let values = Nx.create Nx.float64 [| 0 |] [||] in
       match Cairos.Series.make idx values with
-      | Error e -> Alcotest.fail e
+      | Error e -> Alcotest.fail (Cairos.Series.err_to_string e)
       | Ok s -> Alcotest.(check int) "length is 0" 0 (Cairos.Series.length s))
 
 let slice_empty_range_produces_empty_series () =
@@ -186,7 +210,7 @@ let slice_empty_range_produces_empty_series () =
   | Ok idx -> (
       let values = Nx.create Nx.float64 [| 3 |] [| 1.0; 2.0; 3.0 |] in
       match Cairos.Series.make idx values with
-      | Error e -> Alcotest.fail e
+      | Error e -> Alcotest.fail (Cairos.Series.err_to_string e)
       | Ok s ->
           let equal_bounds = Cairos.Series.slice ~start:1 ~stop:1 s in
           Alcotest.(check int)
@@ -529,12 +553,11 @@ let tests =
     ( "make_succeeds_with_matching_lengths",
       `Quick,
       make_succeeds_with_matching_lengths );
-    ( "make_fails_with_mismatched_lengths",
+    ( "series_make_length_mismatch_variant",
       `Quick,
-      make_fails_with_mismatched_lengths );
-    ( "series_make_zero_dim_returns_error",
-      `Quick,
-      series_make_zero_dim_returns_error );
+      series_make_length_mismatch_variant );
+    ("series_make_zero_dim_variant", `Quick, series_make_zero_dim_variant);
+    ("series_err_to_string_nonempty", `Quick, series_err_to_string_nonempty);
     ( "slice_produces_correct_subseries",
       `Quick,
       slice_produces_correct_subseries );

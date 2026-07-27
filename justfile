@@ -131,13 +131,16 @@ lint-opam:
 #
 # Self-tests in all three directions against the committed fixtures before
 # scanning the real tree. A gate proven once by hand is a gate that rots, and
-# the comment direction is not hypothetical — lib/cairos_io/cairos_io.ml:82
-# names the token in prose today. The exit-2 arm is the one that matters most:
+# the comment direction is not hypothetical — the `parse_rows` doc comment in
+# lib/cairos_io/cairos_io.ml names the token in prose today. Symbol name rather
+# than a line number: this reference has gone stale twice on unrelated edits.
+# The exit-2 arm is the one that matters most:
 # if the lexer loses sync it strips the rest of the file as comment text, so a
 # fail-open scan would report a clean tree.
 #
 # Scope is lib/cairos_engine/*.ml and nothing else, stated here rather than left
-# to be inferred from the glob: lib/cairos_io/cairos_io.ml:82 (a comment) and
+# to be inferred from the glob: the `parse_rows` doc comment in
+# lib/cairos_io/cairos_io.ml (a comment) and
 # test/unit/cairos_engine/cross_validate_oracles.ml:525 (real code) carry the
 # token today and are deliberately unguarded.
 #
@@ -171,7 +174,73 @@ lint-asserts:
     fi
     scripts/lint-asserts.sh lib/cairos_engine/*.ml
 
-lint: lint-doc lint-fmt lint-opam lint-asserts
+# Zero `string` error sides in public signatures. Every fallible function in
+# the library returns a closed `err` variant with a sibling `err_to_string`;
+# prose in a `result` discards the structure a caller needs to recover from a
+# failure. Two exceptions to that rule were recorded and left standing while it
+# was only a convention, and the next feature that adds a fallible function
+# re-breaks it for free — which is why it needs a gate rather than a review.
+#
+# Self-tests in all four directions against the committed fixtures before
+# scanning the real tree, for the reasons the assert gate lists — plus one it
+# does not have. Every .mli scanned is ocamlformat output, and ocamlformat
+# splits a `result` whose success side is wide across three lines, leaving no
+# single line that contains `string) result`. The wrapped fixture pins that:
+# a line-at-a-time scan passes it and reports a dirty tree clean.
+#
+# Scope is the thirteen public .mli files under lib/, stated here rather than
+# left to be inferred from the glob. Implementation files are not scanned: the
+# criterion is about the surface a caller sees, and a `string` error inside an
+# .ml is invisible once the .mli constrains it.
+#
+# Exit codes follow `lint-asserts`: 0 clean, 1 violation, 2 tooling failure —
+# which includes a self-test that did not behave as specified.
+lint-string-errors:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    fixtures=test/lint/fixtures
+    rc=0
+    scripts/lint-string-errors.sh "$fixtures/string_error_violation.mli.fixture" >/dev/null 2>&1 || rc=$?
+    if [ "$rc" -ne 1 ]; then
+        echo "lint-string-errors: SELF-TEST FAILED — $fixtures/string_error_violation.mli.fixture" \
+             "must exit 1, got $rc. The gate does not detect a string error side." >&2
+        exit 2
+    fi
+    rc=0
+    scripts/lint-string-errors.sh "$fixtures/string_error_wrapped.mli.fixture" >/dev/null 2>&1 || rc=$?
+    if [ "$rc" -ne 1 ]; then
+        echo "lint-string-errors: SELF-TEST FAILED — $fixtures/string_error_wrapped.mli.fixture" \
+             "must exit 1, got $rc. The gate misses the shape ocamlformat produces for a wide" \
+             "signature, where no single line contains the whole type." >&2
+        exit 2
+    fi
+    rc=0
+    scripts/lint-string-errors.sh "$fixtures/string_error_qualified.mli.fixture" >/dev/null 2>&1 || rc=$?
+    if [ "$rc" -ne 1 ]; then
+        echo "lint-string-errors: SELF-TEST FAILED — $fixtures/string_error_qualified.mli.fixture" \
+             "must exit 1, got $rc. The gate misses Stdlib.result and Result.t, which is the" \
+             "spelling any signature shadowing 'result' is forced into — cairos_engine.mli does." >&2
+        exit 2
+    fi
+    rc=0
+    scripts/lint-string-errors.sh "$fixtures/string_error_clean.mli.fixture" >/dev/null || rc=$?
+    if [ "$rc" -ne 0 ]; then
+        echo "lint-string-errors: SELF-TEST FAILED — $fixtures/string_error_clean.mli.fixture" \
+             "must exit 0, got $rc. The gate matches the shape in comments or strings, or fires" \
+             "on a string success side." >&2
+        exit 2
+    fi
+    rc=0
+    scripts/lint-string-errors.sh "$fixtures/string_error_truncated.mli.fixture" >/dev/null 2>&1 || rc=$?
+    if [ "$rc" -ne 2 ]; then
+        echo "lint-string-errors: SELF-TEST FAILED — $fixtures/string_error_truncated.mli.fixture" \
+             "must exit 2, got $rc. The gate does not detect that the lexer lost sync," \
+             "so it can strip a dirty file as comment text and report it clean." >&2
+        exit 2
+    fi
+    scripts/lint-string-errors.sh lib/*.mli lib/*/*.mli
+
+lint: lint-doc lint-fmt lint-opam lint-asserts lint-string-errors
 
 validate-generate:
     uv run validation/reference.py
