@@ -39,12 +39,13 @@ let frame_of_columns = function
       | Ok frame -> frame)
 
 (* Read each column's values as a [float array] in [Frame.columns] order.
-   The [None] branch is unreachable: the name was just produced by
-   [Frame.columns] on the same frame — terminate
-   unreachable branches with [failwith] inside QCheck so the shrinker
-   reports the true counter-example. *)
+   Returns a [Nonempty.t] because [Frame.columns] is one, which spares every
+   caller below a dead empty-frame branch. The [None] branch is unreachable:
+   the name was just produced by [Frame.columns] on the same frame —
+   terminate unreachable branches with [failwith] inside QCheck so the
+   shrinker reports the true counter-example. *)
 let columns_arrays frame =
-  List.map
+  Cairos.Nonempty.map
     (fun name ->
       match Cairos.Frame.get name frame with
       | Some s -> Nx.to_array (Cairos.Series.values s)
@@ -121,13 +122,13 @@ let column_map_buffer_is_reused_across_calls () =
       Alcotest.(check bool) "buffer reused across calls" true (b1 == b2)
   | _ -> Alcotest.fail "expected at least 2 captured buffers"
 
-(* Output series length always equals input row count.
-   [Cairos.Frame.index] is not exposed publicly, so the input row count is
-   recovered via [Frame.columns]'s first name + [Frame.get] + [Series.length].
-   The [None] branches below are unreachable: [Frame.columns] is non-empty
-   by [Nonempty.t] construction, and the column name returned was just read
-   from [Frame.columns frame] on the same frame — terminate
-   unreachable branches with [failwith] inside QCheck properties so the
+(* Output series length always equals input row count. The row count is
+   recovered from a member column's own data length rather than from
+   [Cairos.Frame.index], deliberately: [column_map] sizes its output from
+   that same index, so measuring against it would compare the
+   implementation with itself. The [None] branch is unreachable — the
+   column name was just read from [Frame.columns frame] on the same frame
+   — and terminates with [failwith] inside the QCheck property so the
    shrinker reports the true counter-example. *)
 let qcheck_column_map_output_length_equals_row_count =
   QCheck.Test.make ~count:200
@@ -135,18 +136,16 @@ let qcheck_column_map_output_length_equals_row_count =
     Qcheck_gen.daily_frame_distinct_floats_arb (fun frame ->
       let out = Cairos.Frame.column_map ~f:(fun _ -> 0.0) frame in
       let n_in =
-        match Cairos.Frame.columns frame with
-        | [] ->
+        match
+          Cairos.Frame.get
+            (Cairos.Nonempty.hd (Cairos.Frame.columns frame))
+            frame
+        with
+        | None ->
             failwith
-              "unreachable: Frame.columns is non-empty by Nonempty.t \
-               construction"
-        | name :: _ -> (
-            match Cairos.Frame.get name frame with
-            | None ->
-                failwith
-                  "unreachable: column name was just read from Frame.columns \
-                   on the same frame"
-            | Some s -> Cairos.Series.length s)
+              "unreachable: column name was just read from Frame.columns on \
+               the same frame"
+        | Some s -> Cairos.Series.length s
       in
       Cairos.Series.length out = n_in)
 
@@ -162,7 +161,7 @@ let rank_simple_distinct_values () =
   Alcotest.(check (list (array (nan_float 1e-12))))
     "ranks"
     [ [| 3.0 |]; [| 1.0 |]; [| 2.0 |] ]
-    (columns_arrays out)
+    (Cairos.Nonempty.to_list (columns_arrays out))
 
 (* Two equal cells share the average of the ranks they
    would otherwise occupy. 10, 20, 20 → 1, 2.5, 2.5 (the run of length 2
@@ -176,7 +175,7 @@ let rank_average_tie_breaking_two_way () =
   Alcotest.(check (list (array (nan_float 1e-12))))
     "ranks"
     [ [| 1.0 |]; [| 2.5 |]; [| 2.5 |] ]
-    (columns_arrays out)
+    (Cairos.Nonempty.to_list (columns_arrays out))
 
 (* Three equal cells share the average of ranks 1, 2,
    3 = 2.0; the fourth, larger cell takes rank 4. *)
@@ -190,7 +189,7 @@ let rank_average_tie_breaking_three_way () =
   Alcotest.(check (list (array (nan_float 1e-12))))
     "ranks"
     [ [| 2.0 |]; [| 2.0 |]; [| 2.0 |]; [| 4.0 |] ]
-    (columns_arrays out)
+    (Cairos.Nonempty.to_list (columns_arrays out))
 
 (* NaN cells stay NaN and are excluded from N. With
    N=3 here, 10, NaN, 20, 30 → 1, NaN, 2, 3. *)
@@ -204,7 +203,7 @@ let rank_nan_passthrough_and_excluded_from_n () =
   Alcotest.(check (list (array (nan_float 1e-12))))
     "ranks"
     [ [| 1.0 |]; [| Float.nan |]; [| 2.0 |]; [| 3.0 |] ]
-    (columns_arrays out)
+    (Cairos.Nonempty.to_list (columns_arrays out))
 
 (* Constant row of 4 cells: every cell is part of one
    tie spanning ranks 1..4, so each gets (1+4)/2 = 2.5. *)
@@ -218,7 +217,7 @@ let rank_constant_row_uniform_average () =
   Alcotest.(check (list (array (nan_float 1e-12))))
     "ranks"
     [ [| 2.5 |]; [| 2.5 |]; [| 2.5 |]; [| 2.5 |] ]
-    (columns_arrays out)
+    (Cairos.Nonempty.to_list (columns_arrays out))
 
 (* Single-column frame: every non-NaN cell is the only
    member of its row and ranks 1.0; NaN cells stay NaN. *)
@@ -229,7 +228,7 @@ let rank_single_column_frame () =
   Alcotest.(check (list (array (nan_float 1e-12))))
     "ranks"
     [ [| 1.0; Float.nan |] ]
-    (columns_arrays out)
+    (Cairos.Nonempty.to_list (columns_arrays out))
 
 (* All-NaN row produces an all-NaN output row. *)
 let rank_all_nan_row_stays_all_nan () =
@@ -241,7 +240,7 @@ let rank_all_nan_row_stays_all_nan () =
   Alcotest.(check (list (array (nan_float 1e-12))))
     "ranks"
     [ [| Float.nan |]; [| Float.nan |]; [| Float.nan |] ]
-    (columns_arrays out)
+    (Cairos.Nonempty.to_list (columns_arrays out))
 
 (* Output frame's index timestamps and column names
    match the input's. Rank-only here; a parallel _zscore case
@@ -252,7 +251,8 @@ let output_frame_index_and_columns_identical_to_input () =
   let frame = frame_of_columns [ ("a", a); ("b", b) ] in
   let out = Cairos.Frame.rank frame in
   Alcotest.(check (list string))
-    "columns" [ "a"; "b" ] (Cairos.Frame.columns out);
+    "columns" [ "a"; "b" ]
+    (Cairos.Nonempty.to_list (Cairos.Frame.columns out));
   let timestamps_of f name =
     match Cairos.Frame.get name f with
     | None -> Alcotest.fail "unreachable: column was just looked up"
@@ -269,18 +269,14 @@ let qcheck_rank_distinct_values_form_permutation =
     Qcheck_gen.daily_frame_distinct_floats_arb (fun frame ->
       let out = Cairos.Frame.rank frame in
       let cols = columns_arrays out in
-      let n_cols = List.length cols in
-      let n_rows =
-        match cols with
-        | [] ->
-            failwith
-              "unreachable: Frame.columns is non-empty by Nonempty.t \
-               construction"
-        | a :: _ -> Array.length a
-      in
+      let n_cols = Cairos.Nonempty.length cols in
+      let n_rows = Array.length (Cairos.Nonempty.hd cols) in
       let expected = Array.init n_cols (fun j -> Float.of_int (j + 1)) in
       let row_ok i =
-        let row = Array.of_list (List.map (fun a -> a.(i)) cols) in
+        let row =
+          Array.of_list
+            (List.map (fun a -> a.(i)) (Cairos.Nonempty.to_list cols))
+        in
         Array.sort Float.compare row;
         Array.length row = Array.length expected
         && Array.for_all2 Float.equal row expected
@@ -298,24 +294,19 @@ let qcheck_rank_sum_equals_n_times_n_plus_1_over_2 =
       let in_cols = columns_arrays frame in
       let out = Cairos.Frame.rank frame in
       let out_cols = columns_arrays out in
-      let n_rows =
-        match in_cols with
-        | [] ->
-            failwith
-              "unreachable: Frame.columns is non-empty by Nonempty.t \
-               construction"
-        | a :: _ -> Array.length a
-      in
+      let n_rows = Array.length (Cairos.Nonempty.hd in_cols) in
       let row_ok i =
         let n_in =
           List.fold_left
             (fun acc a -> if Float.is_nan a.(i) then acc else acc + 1)
-            0 in_cols
+            0
+            (Cairos.Nonempty.to_list in_cols)
         in
         let sum_out =
           List.fold_left
             (fun acc a -> if Float.is_nan a.(i) then acc else acc +. a.(i))
-            0.0 out_cols
+            0.0
+            (Cairos.Nonempty.to_list out_cols)
         in
         let expected = Float.of_int (n_in * (n_in + 1)) /. 2.0 in
         Float.abs (sum_out -. expected) <= 1e-9
@@ -329,16 +320,14 @@ let qcheck_rank_order_preserving_on_distinct_values =
   QCheck.Test.make ~count:200
     ~name:"qcheck_rank_order_preserving_on_distinct_values"
     Qcheck_gen.daily_frame_distinct_floats_arb (fun frame ->
-      let in_cols = Array.of_list (columns_arrays frame) in
+      let in_cols_ne = columns_arrays frame in
+      let in_cols = Array.of_list (Cairos.Nonempty.to_list in_cols_ne) in
       let out = Cairos.Frame.rank frame in
-      let out_cols = Array.of_list (columns_arrays out) in
-      let n_cols = Array.length in_cols in
-      let n_rows =
-        if n_cols = 0 then
-          failwith
-            "unreachable: Frame.columns is non-empty by Nonempty.t construction"
-        else Array.length in_cols.(0)
+      let out_cols =
+        Array.of_list (Cairos.Nonempty.to_list (columns_arrays out))
       in
+      let n_cols = Array.length in_cols in
+      let n_rows = Array.length (Cairos.Nonempty.hd in_cols_ne) in
       let row_ok i =
         let ok = ref true in
         for ca = 0 to n_cols - 1 do
@@ -367,7 +356,7 @@ let zscore_simple_two_value_row () =
   Alcotest.(check (list (array (nan_float 1e-12))))
     "zscore"
     [ [| -.inv_sqrt2 |]; [| inv_sqrt2 |] ]
-    (columns_arrays out)
+    (Cairos.Nonempty.to_list (columns_arrays out))
 
 (* Pandas reference for row [1, 2, 3, 4] under
    df.sub(df.mean(axis=1), axis=0).div(df.std(axis=1, ddof=1), axis=0).
@@ -388,7 +377,7 @@ let zscore_ddof1_matches_pandas_reference () =
       [| 0.3872983346207417 |];
       [| 1.161895003862225 |];
     ]
-    (columns_arrays out)
+    (Cairos.Nonempty.to_list (columns_arrays out))
 
 (* Constant row: std=0, every output cell is NaN. *)
 let zscore_constant_row_is_all_nan () =
@@ -400,7 +389,7 @@ let zscore_constant_row_is_all_nan () =
   Alcotest.(check (list (array (nan_float 1e-12))))
     "zscore"
     [ [| Float.nan |]; [| Float.nan |]; [| Float.nan |] ]
-    (columns_arrays out)
+    (Cairos.Nonempty.to_list (columns_arrays out))
 
 (* N=1 row (only one non-NaN cell): output row is
    all NaN, the single non-NaN input cell included. *)
@@ -413,7 +402,7 @@ let zscore_single_non_nan_cell_row_is_all_nan () =
   Alcotest.(check (list (array (nan_float 1e-12))))
     "zscore"
     [ [| Float.nan |]; [| Float.nan |]; [| Float.nan |] ]
-    (columns_arrays out)
+    (Cairos.Nonempty.to_list (columns_arrays out))
 
 (* Single-column frame: every row has N=1, every
    output cell is NaN regardless of input value. *)
@@ -424,7 +413,7 @@ let zscore_single_column_frame_is_all_nan () =
   Alcotest.(check (list (array (nan_float 1e-12))))
     "zscore"
     [ [| Float.nan; Float.nan |] ]
-    (columns_arrays out)
+    (Cairos.Nonempty.to_list (columns_arrays out))
 
 (* NaN passes through; non-NaN cells are normalised
    over N=3. Row [NaN, 10, 20, 30]: mean=20, ss=200, std=sqrt(200/2)=10,
@@ -439,7 +428,7 @@ let zscore_nan_passthrough_with_partial_row () =
   Alcotest.(check (list (array (nan_float 1e-12))))
     "zscore"
     [ [| Float.nan |]; [| -1.0 |]; [| 0.0 |]; [| 1.0 |] ]
-    (columns_arrays out)
+    (Cairos.Nonempty.to_list (columns_arrays out))
 
 (* Parallel to the rank index-identity case, this time on [zscore]
    output. Keeps each case green by
@@ -450,7 +439,8 @@ let output_frame_index_and_columns_identical_to_input_zscore () =
   let frame = frame_of_columns [ ("a", a); ("b", b) ] in
   let out = Cairos.Frame.zscore frame in
   Alcotest.(check (list string))
-    "columns" [ "a"; "b" ] (Cairos.Frame.columns out);
+    "columns" [ "a"; "b" ]
+    (Cairos.Nonempty.to_list (Cairos.Frame.columns out));
   let timestamps_of f name =
     match Cairos.Frame.get name f with
     | None -> Alcotest.fail "unreachable: column was just looked up"
@@ -468,20 +458,14 @@ let qcheck_zscore_output_mean_is_zero =
     Qcheck_gen.daily_frame_zscore_well_conditioned_arb (fun frame ->
       let out = Cairos.Frame.zscore frame in
       let out_cols = columns_arrays out in
-      let n_rows =
-        match out_cols with
-        | [] ->
-            failwith
-              "unreachable: Frame.columns is non-empty by Nonempty.t \
-               construction"
-        | a :: _ -> Array.length a
-      in
+      let n_rows = Array.length (Cairos.Nonempty.hd out_cols) in
       let row_ok i =
         let n, sum =
           List.fold_left
             (fun (n, s) a ->
               if Float.is_nan a.(i) then (n, s) else (n + 1, s +. a.(i)))
-            (0, 0.0) out_cols
+            (0, 0.0)
+            (Cairos.Nonempty.to_list out_cols)
         in
         if n = 0 then false
         else
@@ -500,20 +484,14 @@ let qcheck_zscore_output_std_is_one =
     Qcheck_gen.daily_frame_zscore_well_conditioned_arb (fun frame ->
       let out = Cairos.Frame.zscore frame in
       let out_cols = columns_arrays out in
-      let n_rows =
-        match out_cols with
-        | [] ->
-            failwith
-              "unreachable: Frame.columns is non-empty by Nonempty.t \
-               construction"
-        | a :: _ -> Array.length a
-      in
+      let n_rows = Array.length (Cairos.Nonempty.hd out_cols) in
       let row_ok i =
         let n, sum =
           List.fold_left
             (fun (n, s) a ->
               if Float.is_nan a.(i) then (n, s) else (n + 1, s +. a.(i)))
-            (0, 0.0) out_cols
+            (0, 0.0)
+            (Cairos.Nonempty.to_list out_cols)
         in
         if n < 2 then false
         else
@@ -523,7 +501,8 @@ let qcheck_zscore_output_std_is_one =
               (fun acc a ->
                 if Float.is_nan a.(i) then acc
                 else acc +. ((a.(i) -. mean) *. (a.(i) -. mean)))
-              0.0 out_cols
+              0.0
+              (Cairos.Nonempty.to_list out_cols)
           in
           let std = Float.sqrt (ss /. Float.of_int (n - 1)) in
           Float.abs (std -. 1.0) <= 1e-10

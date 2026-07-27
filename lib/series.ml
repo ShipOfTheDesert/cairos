@@ -1,13 +1,17 @@
 type ('freq, 'v) t = { index : 'freq Index.t; values : 'v }
 
 let make index values =
-  let idx_len = Index.length index in
-  let val_len = (Nx.shape values).(0) in
-  if idx_len = val_len then Ok { index; values }
+  let shape = Nx.shape values in
+  if Array.length shape = 0 then
+    Error "values tensor is 0-dimensional: no leading axis to match the index"
   else
-    Error
-      (Printf.sprintf "index length %d does not match values length %d" idx_len
-         val_len)
+    let idx_len = Index.length index in
+    let val_len = shape.(0) in
+    if idx_len = val_len then Ok { index; values }
+    else
+      Error
+        (Printf.sprintf "index length %d does not match values length %d"
+           idx_len val_len)
 
 let make_unsafe index values = { index; values }
 let index t = t.index

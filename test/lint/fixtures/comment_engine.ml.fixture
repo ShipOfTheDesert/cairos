@@ -1,0 +1,35 @@
+(* Self-test fixture for the `lint-asserts` recipe in the justfile — the only
+   consumer of this file. It is not built: the `.fixture` suffix keeps it out
+   of dune's sight, and its contents need only lex the way engine source lexes.
+
+   Contract: this file must PASS the gate (exit 0). Every occurrence of the
+   guarded token below sits in a comment, a string literal, or an identifier
+   that merely contains it.
+
+   lib/cairos_io/cairos_io.ml:82 documents its own non-emptiness the same way —
+   prose naming the token is the ordinary case, not a hypothetical one.
+
+   (* A nested comment, one level deeper: assert false again. A stripper that
+      closes the outer comment at the inner terminator reads the rest of this
+      block as code. *)
+
+   OCaml lexes string literals inside comments, so this "*)" does not close the
+   comment: assert false.
+*)
+
+let error_message = "assert false: unreachable position state"
+
+(* ocamlformat reflows long string literals across lines with a backslash
+   continuation. The token survives inside the literal either way. *)
+let reflowed_message =
+  "the engine no longer reaches an assert \
+   false on this path"
+
+let quoted_message = {|assert false inside a quoted string literal|}
+
+(* Identifiers that contain the token but are not it. *)
+let assert' x = x + 1
+
+let assertion_count = 0
+
+let deleted_assert_sites = [ 98; 104; 114; 395; 414; 430; 501; 510; 525 ]

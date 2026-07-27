@@ -64,8 +64,8 @@ let column_values frame name : float array =
   | None -> die_tooling "column %s not found in frame" name
 
 let compare_frames ~tolerance ~expected ~actual : (float, string) result =
-  let ecols = Frame.columns expected in
-  let acols = Frame.columns actual in
+  let ecols = Nonempty.to_list (Frame.columns expected) in
+  let acols = Nonempty.to_list (Frame.columns actual) in
   if ecols <> acols then
     Error
       (Printf.sprintf "column list mismatch: expected [%s], got [%s]"

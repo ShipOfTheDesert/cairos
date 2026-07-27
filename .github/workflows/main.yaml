@@ -27,6 +27,29 @@ jobs:
       - name: Test
         run: just test
 
+  # Deliberately does not use ./.github/actions/ocaml-deps: the gate is a text
+  # scan over lib/cairos_engine/*.ml and needs no switch, so a violation reports
+  # in seconds rather than behind a full opam solve. The recipe is invoked
+  # directly rather than re-listed here, so its three-way fixture self-test
+  # cannot drift out of CI.
+  #
+  # This job is duplicated verbatim in pr.yaml rather than living in lint.yaml,
+  # and the duplication is deliberate: lint.yaml triggers only on pull_request,
+  # so a direct push to main would not be gated. Keeping both copies in the
+  # workflows that already run build/test keeps the gate's trigger surface
+  # identical to theirs. Change the two together.
+  engine-assert-gate:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v6
+      - uses: extractions/setup-just@v3
+        with:
+          just-version: '1.46.0'
+
+      - name: Engine-assert gate
+        run: just lint-asserts
+
   cross-validation:
     runs-on: ubuntu-latest
 

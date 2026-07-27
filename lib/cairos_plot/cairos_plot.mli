@@ -28,7 +28,7 @@ val drawdown_chart :
     are derived from the series index timestamps.
 
     The input should be a drawdown series with non-positive values, typically
-    the output of {!Cairos_finance.drawdown_series}.
+    the output of [Cairos_finance.drawdown_series].
 
     @param title Optional chart title displayed above the plot area
     @param width SVG width in pixels (default [800.0])

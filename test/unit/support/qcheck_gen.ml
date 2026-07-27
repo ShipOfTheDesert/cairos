@@ -346,14 +346,11 @@ let frame_from_rows ~n_cols rows =
 
 let frame_print_shape f =
   let cols = Cairos.Frame.columns f in
-  let n_cols = List.length cols in
+  let n_cols = Cairos.Nonempty.length cols in
   let n_rows =
-    match cols with
-    | [] -> 0
-    | name :: _ -> (
-        match Cairos.Frame.get name f with
-        | None -> 0
-        | Some s -> Cairos.Series.length s)
+    match Cairos.Frame.get (Cairos.Nonempty.hd cols) f with
+    | None -> 0
+    | Some s -> Cairos.Series.length s
   in
   (n_rows, n_cols)
 

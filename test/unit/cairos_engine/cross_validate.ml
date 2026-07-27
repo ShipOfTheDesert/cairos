@@ -163,12 +163,10 @@ let compare_float_series ~name ~expected ~actual =
   done
 
 let frame_index frame =
-  match Cairos.Frame.columns frame with
-  | [] -> die_tooling "frame has no columns"
-  | name :: _ -> (
-      match Cairos.Frame.get name frame with
-      | Some s -> Cairos.Series.index s
-      | None -> die_tooling "frame missing column %S" name)
+  let name = Cairos.Nonempty.hd (Cairos.Frame.columns frame) in
+  match Cairos.Frame.get name frame with
+  | Some s -> Cairos.Series.index s
+  | None -> die_tooling "frame missing column %S" name
 
 let build_rebalance_index price_idx =
   let price_ts = Cairos.Index.timestamps price_idx in
