@@ -55,7 +55,8 @@ let columns_in_insertion_order =
           failwith
             "unreachable: paired_aligned_daily_arb guarantees identical \
              indices and distinct column names"
-      | Ok frame -> Cairos.Frame.columns frame = [ "a"; "b" ])
+      | Ok frame ->
+          Cairos.Nonempty.to_list (Cairos.Frame.columns frame) = [ "a"; "b" ])
 
 (* Two-column construction succeeds whenever both series share
    the same index by construction. The negative case (mismatched indices →

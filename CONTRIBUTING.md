@@ -350,7 +350,8 @@ handle.
 
 - `Cairos.Index` smart constructors (`daily`, `minute`, `hourly`, `weekly`,
   `of_unix_floats`) — parse failures and monotonicity violations.
-- `Cairos.Series.make` — index/values length mismatch.
+- `Cairos.Series.make` — index/values length mismatch and 0-dimensional
+  values.
 - `Cairos.Align.align` — may produce an empty index.
 - `Cairos.Resample.resample` — target frequency must be lower than source.
 - `Cairos.Frame.of_series` — duplicate column names and index mismatch.
@@ -369,6 +370,9 @@ Chain with `let*`. Do not unwrap with `Result.get_ok` outside tests.
 
 Never `raise`. Never `failwith`. Never `assert false` as an error path. If you
 find yourself wanting to raise, the design is wrong.
+
+In `lib/cairos_engine/` this is enforced mechanically rather than by
+convention — see the engine-assert gate under §X.
 
 - For functions whose precondition is "input list must be non-empty", use
   `Cairos.Nonempty.t` at the function signature rather than a runtime `result`
@@ -441,6 +445,75 @@ just    # build + test + fmt + lint
 ```
 
 No PR is opened without this passing locally first.
+
+#### The engine-assert gate
+
+`just lint-asserts` — folded into `just lint`, so `just` runs it — fails if any
+file under `lib/cairos_engine/` contains an `assert` token outside a comment or
+a string literal. §V forbids `assert false` as an error path everywhere; the
+engine is the one place where that rule has a machine checking it, because two
+code reviews found the unreachability comments justifying nine such sites had
+gone stale while the sites themselves stayed put.
+
+```bash
+just lint-asserts                          # self-test, then scan the engine
+scripts/lint-asserts.sh path/to/file.ml    # scan arbitrary files
+```
+
+A bare `grep` is not sufficient in either direction: it fires on the comment
+that merely names the token — `lib/cairos_io/cairos_io.ml:82` does exactly that
+today — and it is blind to a token hidden inside a string. So
+`scripts/lint-asserts.awk` lexes just enough OCaml to remove non-code text
+first: nested `(* (* *) *)` comments, string literals (including ocamlformat's
+backslash continuations), string literals *inside* comments, `{|quoted|}` and
+`{tag|quoted|tag}` literals, and char literals — `'"'` would otherwise open a
+string that swallows the rest of the file.
+
+**Exit codes**, following the `bench-compare` convention:
+
+| Code | Meaning |
+|------|---------|
+| `0` | clean |
+| `1` | at least one `assert` token in engine code |
+| `2` | tooling failure — bad arguments, or the lexer desynchronised |
+
+Exit 2 is not a nuisance code, it is the one that keeps the gate honest. If the
+lexer runs off the end of a file it has stopped tracking (an unterminated
+comment or string), everything after that point is stripped as comment text and
+a dirty tree reports clean. The awk script checks its own end-of-file state and
+exits 2 rather than reporting a green it cannot justify.
+
+**Self-test.** `just lint-asserts` runs three fixtures under
+`test/lint/fixtures/` through the real script before it scans the real tree, and
+aborts if any of them behaves differently from its contract:
+
+| Fixture | Must exit |
+|---------|-----------|
+| `dirty_engine.ml.fixture` | `1` — real `assert false` in code |
+| `comment_engine.ml.fixture` | `0` — the token only in comments, strings and identifiers |
+| `truncated_engine.ml.fixture` | `2` — unterminated comment, lexer out of sync |
+
+The fixtures are `.fixture` rather than `.ml` to keep them out of dune's sight.
+They exercise the same `scripts/lint-asserts.sh` entrypoint as the real scan —
+a self-test that runs different code from the gate proves nothing about the
+gate.
+
+**Portability.** The awk is POSIX-only (no `gensub`, no regex-dialect
+dependencies). `ubuntu-latest` ships mawk as `/usr/bin/awk`, so mawk, not gawk,
+is what runs this in CI; identical exit codes are verified under gawk 5.4.0,
+`gawk --posix`, `gawk --traditional`, mawk 1.3.4 and busybox awk.
+
+**In CI** the gate runs as the `engine-assert-gate` job in both
+`.github/workflows/pr.yaml` and `main.yaml`. It is in both — rather than in
+`lint.yaml` — because `lint.yaml` triggers only on `pull_request`, so a direct
+push to `main` would go ungated. The job invokes `just lint-asserts` rather than
+re-listing its steps, so the self-test cannot drift out of CI. It installs only
+`just`: the gate is a text scan and needs no opam switch, so a violation reports
+in seconds instead of behind a full solve.
+
+Scope is `lib/cairos_engine/*.ml` and nothing else. `lib/cairos_io/cairos_io.ml`
+(a comment) and `test/unit/cairos_engine/cross_validate_oracles.ml` (real code)
+carry the token today and are deliberately unguarded.
 
 ## Commit Style
 

@@ -5,15 +5,15 @@
 (generate_opam_files true)
 
 (source
- (github username/reponame))
+ (github ShipOfTheDesert/cairos))
 
-(authors "Author Name <author@example.com>")
+(authors "Miguel Lopez V <miguellova@gmail.com>")
 
-(maintainers "Maintainer Name <maintainer@example.com>")
+(maintainers "Miguel Lopez V <miguellova@gmail.com>")
 
-(license LICENSE)
+(license ISC)
 
-(documentation https://url/to/documentation)
+(documentation https://shipofthedesert.github.io/cairos)
 
 (package
  (name cairos)

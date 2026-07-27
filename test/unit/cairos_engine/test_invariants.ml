@@ -220,7 +220,10 @@ let rebal_mask ei =
    [make_daily_index], which is deterministic in [n_bars] and therefore
    reproduces the generator's index. *)
 let scale_prices ~k ei =
-  let names = Array.of_list (Cairos.Frame.columns ei.price_frame) in
+  let names =
+    Array.of_list
+      (Cairos.Nonempty.to_list (Cairos.Frame.columns ei.price_frame))
+  in
   let values =
     Array.map
       (fun name ->
@@ -261,7 +264,10 @@ let scale_prices ~k ei =
 
    Columns are indexed by position, matching [signal_targets]'s own ordering. *)
 let frictionless_nav ei =
-  let names = Array.of_list (Cairos.Frame.columns ei.price_frame) in
+  let names =
+    Array.of_list
+      (Cairos.Nonempty.to_list (Cairos.Frame.columns ei.price_frame))
+  in
   let prices =
     Array.map (fun name -> column_values name ei.price_frame) names
   in
@@ -430,7 +436,9 @@ let weights_constant_between_rebalances =
       | Error e -> fail_run e
       | Ok result ->
           let is_rebal = rebal_mask ei in
-          let names = Cairos.Frame.columns result.weights in
+          let names =
+            Cairos.Nonempty.to_list (Cairos.Frame.columns result.weights)
+          in
           List.for_all
             (fun name ->
               let w = column_values name result.weights in

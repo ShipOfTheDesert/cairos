@@ -30,9 +30,45 @@ val get :
     returned series pairs the frame's shared index with the stored values via
     {!Series.make_unsafe}. *)
 
-val columns : 'freq t -> string list
-(** Column names in insertion order. Always non-empty — a [Frame.t] has at least
-    one column by construction. *)
+val columns : 'freq t -> string Nonempty.t
+(** Column names in insertion order. The [Nonempty.t] carries the frame's
+    one-column-minimum invariant: a [Frame.t] is built from a [Nonempty.t] of
+    pairs by {!of_series}, so callers destructure the result without an empty
+    case. *)
+
+val index : 'freq t -> 'freq Index.t
+(** [index frame] returns the index shared by every column. Total: a [Frame.t]
+    owns exactly one index, validated at construction against every member
+    series. Callers do not need to reach for an arbitrary column via {!get} to
+    recover it. *)
+
+val to_series :
+  'freq t ->
+  (string * ('freq, (float, Bigarray.float64_elt) Nx.t) Series.t) Nonempty.t
+(** [to_series frame] returns every column as a named series, in insertion
+    order. Total inverse of {!of_series}: feeding the result back into
+    {!of_series} yields [Ok] with an equal frame, since neither the
+    duplicate-name nor the index-mismatch error can arise from a frame's own
+    columns. Each series pairs {!index} with the stored values, as {!get} does.
+*)
+
+val mapi_cells :
+  f:(col:int -> name:string -> row:int -> float -> float) -> 'freq t -> 'freq t
+(** [mapi_cells ~f frame] returns a frame with the same shape as [frame] — the
+    same column names in the same order and the same [Index.t] — where the cell
+    at column position [col] and row position [row] holds
+    [f ~col ~name ~row cell]. [col] is the 0-based position of the column in
+    {!columns}, [name] is that column's name, [row] is the 0-based position in
+    {!index}, and [cell] is the input value there.
+
+    Total: the output shape is taken from [frame], so neither the duplicate-name
+    nor the index-mismatch error of {!of_series} can arise. Callers deriving a
+    frame over an existing frame's shape use this rather than round-tripping
+    through {!of_series} and handling a [result] that cannot be [Error].
+
+    [f] is applied exactly once per cell; the traversal order is unspecified.
+    NaN cells reach [f] as [Float.nan]; [f] is responsible for its own NaN
+    handling. *)
 
 val head : int -> 'freq t -> 'freq t
 (** [head n frame] returns a frame with the first [n] rows. Clamps to the frame
@@ -59,7 +95,11 @@ val describe : 'freq t -> (string * column_stats) list
     from all computations. Percentiles use linear interpolation. Returns one
     entry per column in insertion order. If a column is all-NaN, [count] is [0]
     and all float fields are [Float.nan]. Uses population standard deviation
-    (ddof=0). *)
+    (ddof=0).
+
+    The ddof difference from {!zscore} (which uses ddof=1) is deliberate: this
+    function summarises a column as the whole population it is, while {!zscore}
+    treats each row's cross-section as a sample. *)
 
 (** {1 Cross-sectional operations}
 
@@ -130,6 +170,11 @@ val zscore : 'freq t -> 'freq t
     [Cairos_finance.annualised_vol]). The output at column [c] and timestamp [t]
     is [(input[c, t] -. m) /. s] when [N >= 2] and [s <> 0]; [Float.nan]
     otherwise. NaN cells in the input remain [Float.nan].
+
+    The ddof difference from {!describe} (which uses ddof=0) is deliberate: this
+    function treats each row's cross-section as a sample drawn from a wider
+    universe of instruments, while {!describe} summarises a column as the whole
+    population it is.
 
     Edge cases:
     - All-NaN row → all-NaN output row.

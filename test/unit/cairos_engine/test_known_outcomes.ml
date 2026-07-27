@@ -1255,6 +1255,491 @@ let mid_series_size_adjustment_segment_sum_pnl () =
       Alcotest.(check (float 1e-10))
         "1 + sum(pnl) = equity.(last)" equity_5 (1.0 +. trade.pnl)
 
+(* === Test 8: exit_to_flat_resolves_trade_at_execution_bar ===
+
+   Every other test in this file, every [test_invariants.ml] property, and
+   all three [validate-oracle] scenarios close their positions the same way:
+   end-of-backtest force-close. None of them ever takes a target weight back
+   to [0.0] while a position is open, so the loop's *resolution* branch —
+   [weight_delta <> 0.0] with [target = 0.0] — runs in no test in the
+   repository. Established by mutation, not by reading: dropping the closing
+   cost from that branch ([pnl = pnl_acc -. cost_j] to [pnl = pnl_acc]) left
+   [dune runtest --force] at exit 0.
+
+   The branch differs from force-close in four observable ways at once — the
+   exit timestamp, the exit price, the holding period, and whether the
+   closing cost reaches the trade — so a single exit-to-flat case pins all
+   four.
+
+   Setup:
+     dates       = [2024-01-01 .. 2024-01-06]
+     prices      = [100; 100; 102; 104.04; 106.1208; 108.243216]
+       — flat from t=0 to t=1 (zero weights, no MTM drift), then +2% per bar.
+     signals     = [0.0; 1.0; 1.0; 0.0; 0.0; 0.0]
+     rebalance   = [t=1; t=3]
+     commission  = 0.001
+     slippage    = 0.0005   (c = 0.0015)
+
+   Derivation:
+     - [t=0]: not a rebalance, zero weights. equity.(0) = 1.0.
+     - [t=1]: rebalance. MTM at zero weights is a no-op, so the pre-cost NAV
+         is 1.0. [dw = 1.0 -. 0.0], cost1 = 0.0015. Inception executes at
+         [T+1 = 2]: entry_price = price.(2) = 102.0.
+         equity.(1) = 1.0 -. cost1. weights := 1.0.
+     - [t=2]: not a rebalance. MTM at w = 1.0.
+     - [t=3]: rebalance to [target = 0.0]. MTM at the still-held w = 1.0
+         first; [dw = 0.0 -. 1.0 = -1.0], so cost2 is charged on full
+         turnover against that post-MTM NAV. The position *resolves* here:
+         the trade closes at [T+1 = 4], not at the last bar.
+         equity.(3) = nav_after_mtm -. cost2. weights := 0.0.
+     - [t=4], [t=5]: weights are 0.0, so MTM is a no-op and the equity curve
+         is flat at equity.(3) even though prices keep rising 2% per bar.
+         That flatness is the pin that the exit really happened.
+
+   Trade record (resolution at [t=3], executed at bar 4):
+     - entry_timestamp = price_index.(2) = 2024-01-03.
+     - exit_timestamp  = price_index.(4) = 2024-01-05 — NOT the last bar.
+     - entry_price     = price.(2) = 102.0.
+     - exit_price      = price.(4) = 106.1208 — NOT price.(5).
+     - holding_period_bars = 4 - 2 = 2 — NOT 3.
+     - pnl = equity.(3) -. 1.0, by the single-trade equity-trade identity.
+       The identity holds only if cost2 is charged to the closing trade as
+       well as deducted from NAV; omitting it leaves pnl high by cost2.
+
+   Red-first (by rival-hypothesis mutation, per this file's head comment):
+   under the force-close hypothesis — the engine reaching the last bar with
+   the position still open — [exit_timestamp] reddens (2024-01-06 against
+   2024-01-05), [exit_price] reddens (108.243216 against 106.1208), and
+   [holding_period_bars] reddens (3 against 2). Under the
+   cost-not-attributed hypothesis, [pnl] alone reddens while the equity
+   curve stays green, because NAV is debited either way and only the
+   attribution to the trade is in question. Each was observed failing on its
+   own and reverted. *)
+
+let exit_to_flat_resolves_trade_at_execution_bar () =
+  let dates =
+    [|
+      "2024-01-01";
+      "2024-01-02";
+      "2024-01-03";
+      "2024-01-04";
+      "2024-01-05";
+      "2024-01-06";
+    |]
+  in
+  let prices = [| 100.0; 100.0; 102.0; 104.04; 106.1208; 108.243216 |] in
+  let w_entry = 1.0 in
+  let signals = [| 0.0; w_entry; w_entry; 0.0; 0.0; 0.0 |] in
+  let price_frame = make_frame [ ("A", make_daily_series dates prices) ] in
+  let signal_frame = make_frame [ ("A", make_daily_series dates signals) ] in
+  let rebalance_index = make_daily_index [| "2024-01-02"; "2024-01-04" |] in
+  let commission = 0.001 in
+  let slippage = 0.0005 in
+  let c = commission +. slippage in
+  let mtm w nav i =
+    nav *. (1.0 +. (w *. ((prices.(i) /. prices.(i - 1)) -. 1.0)))
+  in
+  (* Rebalance 1 at [t=1]: zero weights make the mark-to-market step a no-op,
+     so the pre-cost NAV is 1.0. *)
+  let cost1 = c *. Float.abs (w_entry -. 0.0) *. 1.0 in
+  let equity_1 = 1.0 -. cost1 in
+  let equity_2 = mtm w_entry equity_1 2 in
+  (* Rebalance 2 at [t=3]: mark to market at the still-held [w_entry] first;
+     the exit's cost is charged on full turnover against that post-MTM,
+     pre-deduction NAV. *)
+  let nav_reb2 = mtm w_entry equity_2 3 in
+  let cost2 = c *. Float.abs (0.0 -. w_entry) *. nav_reb2 in
+  let equity_3 = nav_reb2 -. cost2 in
+  (* Flat after the exit: prices keep rising, NAV does not. *)
+  let expected_equity =
+    [| 1.0; equity_1; equity_2; equity_3; equity_3; equity_3 |]
+  in
+  match
+    Cairos_engine.Backtest.run ~price_frame ~signal_frame ~rebalance_index
+      ~commission ~slippage
+  with
+  | Error e -> Alcotest.fail (Cairos_engine.Backtest.err_to_string e)
+  | Ok result ->
+      let equity_actual =
+        Nx.to_array (Cairos.Series.values result.equity_curve)
+      in
+      check_float_array_close ~tol:1e-10 ~msg:"equity_curve" expected_equity
+        equity_actual;
+      check_float_array_close ~tol:1e-10 ~msg:"weights[A]"
+        [| 0.0; w_entry; w_entry; 0.0; 0.0; 0.0 |]
+        (frame_get_values "A" result.weights);
+      Alcotest.(check int)
+        "trade count (resolution emits the only trade)" 1
+        (Cairos.Nonempty.length result.trades);
+      let trade = Cairos.Nonempty.hd result.trades in
+      Alcotest.(check string) "instrument" "A" trade.instrument;
+      Alcotest.(check ptime_testable)
+        "entry_timestamp"
+        (ptime_of_date "2024-01-03T00:00:00Z")
+        trade.entry_timestamp;
+      Alcotest.(check (float 1e-10)) "entry_price" prices.(2) trade.entry_price;
+      Alcotest.(check ptime_testable)
+        "exit_timestamp (resolution's T+1, not the last bar)"
+        (ptime_of_date "2024-01-05T00:00:00Z")
+        trade.exit_timestamp;
+      Alcotest.(check (float 1e-10))
+        "exit_price (resolution's execution price, not the last close)"
+        prices.(4) trade.exit_price;
+      Alcotest.(check int)
+        "holding_period_bars (ends at the exit bar, not the last bar)" 2
+        trade.holding_period_bars;
+      Alcotest.(check (float 1e-10))
+        "pnl (net of both the entry and the exit cost)" (equity_3 -. 1.0)
+        trade.pnl
+
+(* === Test 9: leading_all_zero_rebalance_is_inert ===
+
+   Every other test in this file, every [test_invariants.ml] property, and
+   all three [validate-oracle] scenarios carry a non-zero target weight at
+   their *first* rebalance date, so no test in the repository has a
+   rebalance bar that precedes the first non-zero target. Established by
+   mutation, not by reading: replacing the pre-first-trade rebalance charge
+   with [current_nav := Float.nan] left [dune runtest --force] at exit 0.
+
+   That stretch of bars is where the loop holds nothing and can hold
+   nothing, and it is walked separately from the general body so the first
+   trade can be opened by straight-line code. A leading all-zero rebalance
+   is the input that makes the stretch non-trivial: it is a rebalance the
+   loop must visit and must leave inert.
+
+   Setup:
+     dates       = [2024-01-01 .. 2024-01-05]
+     prices      = [100; 100; 100; 102; 104.04]
+       — flat through t=2 (nothing is held there), then +2% per bar.
+     signals     = [0.0; 0.0; 1.0; 1.0; 1.0]
+     rebalance   = [t=1; t=2]
+     commission  = 0.001
+     slippage    = 0.0005   (c = 0.0015)
+
+   Derivation:
+     - [t=0]: not a rebalance, nothing held. equity.(0) = 1.0.
+     - [t=1]: rebalance, but every target is 0.0, so [dw = 0.0], the charge
+         is [c *. 0.0 *. 1.0 = 0.0] and no position opens.
+         equity.(1) = 1.0 — exactly, not to tolerance. weights := 0.0.
+     - [t=2]: rebalance to [target = 1.0]. Nothing is held, so the
+         mark-to-market step is a no-op and the pre-cost NAV is still 1.0.
+         cost = c *. 1.0 *. 1.0. Inception executes at [T+1 = 3].
+         equity.(2) = 1.0 -. cost. weights := 1.0.
+     - [t=3], [t=4]: not rebalances. MTM at w = 1.0 compounds +2% per bar.
+
+   Trade record (force-closed at the last bar):
+     - entry_timestamp = price_index.(3) = 2024-01-04 — the T+1 of the
+       *second* rebalance, not the first.
+     - entry_price = price.(3) = 102.0.
+     - holding_period_bars = 4 - 3 = 1.
+     - pnl = equity.(4) -. 1.0, by the single-trade equity-trade identity.
+
+   Red-first (by rival-hypothesis mutation, per this file's head comment):
+   under the hypothesis that the pre-first-trade stretch is not walked
+   faithfully ([current_nav := Float.nan] at its rebalance), [equity_curve]
+   reddens at index 1. Under the hypothesis that the first trade opens at
+   the first *rebalance* rather than at the first non-zero target (the
+   witness selected without regard to the targets), the loop opens a
+   zero-weight position at [t=1] and the [t=2] rebalance closes it as a
+   sign flip: the trade count reddens (2 against 1), as do
+   [entry_timestamp] and [entry_price]. Each was observed failing on its
+   own and reverted. *)
+
+let leading_all_zero_rebalance_is_inert () =
+  let dates =
+    [| "2024-01-01"; "2024-01-02"; "2024-01-03"; "2024-01-04"; "2024-01-05" |]
+  in
+  let prices = [| 100.0; 100.0; 100.0; 102.0; 104.04 |] in
+  let w_entry = 1.0 in
+  let signals = [| 0.0; 0.0; w_entry; w_entry; w_entry |] in
+  let price_frame = make_frame [ ("A", make_daily_series dates prices) ] in
+  let signal_frame = make_frame [ ("A", make_daily_series dates signals) ] in
+  let rebalance_index = make_daily_index [| "2024-01-02"; "2024-01-03" |] in
+  let commission = 0.001 in
+  let slippage = 0.0005 in
+  let c = commission +. slippage in
+  let mtm w nav i =
+    nav *. (1.0 +. (w *. ((prices.(i) /. prices.(i - 1)) -. 1.0)))
+  in
+  (* The [t=1] rebalance moves nothing: zero turnover, zero charge. *)
+  let cost = c *. Float.abs (w_entry -. 0.0) *. 1.0 in
+  let equity_2 = 1.0 -. cost in
+  let equity_3 = mtm w_entry equity_2 3 in
+  let equity_4 = mtm w_entry equity_3 4 in
+  let expected_equity = [| 1.0; 1.0; equity_2; equity_3; equity_4 |] in
+  match
+    Cairos_engine.Backtest.run ~price_frame ~signal_frame ~rebalance_index
+      ~commission ~slippage
+  with
+  | Error e -> Alcotest.fail (Cairos_engine.Backtest.err_to_string e)
+  | Ok result ->
+      let equity_actual =
+        Nx.to_array (Cairos.Series.values result.equity_curve)
+      in
+      check_float_array_close ~tol:1e-10 ~msg:"equity_curve" expected_equity
+        equity_actual;
+      check_float_array_close ~tol:1e-10 ~msg:"weights[A]"
+        [| 0.0; 0.0; w_entry; w_entry; w_entry |]
+        (frame_get_values "A" result.weights);
+      Alcotest.(check int)
+        "trade count (the all-zero rebalance opens nothing)" 1
+        (Cairos.Nonempty.length result.trades);
+      let trade = Cairos.Nonempty.hd result.trades in
+      Alcotest.(check string) "instrument" "A" trade.instrument;
+      Alcotest.(check ptime_testable)
+        "entry_timestamp (T+1 of the second rebalance, not the first)"
+        (ptime_of_date "2024-01-04T00:00:00Z")
+        trade.entry_timestamp;
+      Alcotest.(check (float 1e-10))
+        "entry_price (the second rebalance's execution price)" prices.(3)
+        trade.entry_price;
+      Alcotest.(check ptime_testable)
+        "exit_timestamp (force-close at the last bar)"
+        (ptime_of_date "2024-01-05T00:00:00Z")
+        trade.exit_timestamp;
+      Alcotest.(check (float 1e-10))
+        "exit_price (last close)" prices.(4) trade.exit_price;
+      Alcotest.(check int) "holding_period_bars" 1 trade.holding_period_bars;
+      Alcotest.(check (float 1e-10))
+        "pnl (net of the entry cost)" (equity_4 -. 1.0) trade.pnl
+
+(* === Test 10: force_close_order_is_column_order_not_entry_order ===
+
+   The force-close sweep emits one trade per still-open instrument in
+   column order. Every multi-instrument fixture in the repository opens
+   both instruments at the same rebalance, so column order and entry order
+   coincide there and neither pins the other; and every fixture's first
+   non-zero target is in column 0, so the sweep's "columns before the first
+   traded one" stretch is never non-empty. Established by mutation: dropping
+   that stretch left [dune runtest --force] at exit 0, and so did reversing
+   the order in which the trades closed during the loop are emitted.
+
+   This fixture separates the two orders. "B" is the only instrument with a
+   non-zero target at the first rebalance, so it is the first to open and
+   the one the loop's first trade belongs to; "A" opens a rebalance later
+   and is emitted *before* it, because "A" is the earlier column.
+
+   Setup:
+     dates       = [2024-01-01 .. 2024-01-05]
+     prices      = A and B both flat at 100 through every bar — the trades
+                   are pure cost, so the ordering assertions cannot be
+                   satisfied accidentally by a price effect.
+     signals     = A: [0; 0; 1; 1; 1]      B: [0; 1; 1; 1; 1]
+     rebalance   = [t=1; t=2]
+     commission  = 0.001
+     slippage    = 0.0005   (c = 0.0015)
+
+   Derivation:
+     - [t=0]: nothing held. equity.(0) = 1.0.
+     - [t=1]: rebalance. [dw_A = 0.0], [dw_B = 1.0], so only B is charged:
+         cost_B = c *. 1.0 *. 1.0. equity.(1) = 1.0 -. cost_B. B executes
+         at [T+1 = 2].
+     - [t=2]: rebalance. Prices are flat, so the mark-to-market step is a
+         no-op and the pre-cost NAV is equity.(1). [dw_A = 1.0],
+         [dw_B = 0.0]: cost_A = c *. 1.0 *. equity.(1), B is not charged
+         again. equity.(2) = equity.(1) -. cost_A. A executes at [T+1 = 3].
+     - [t=3], [t=4]: flat prices, so the equity curve holds at equity.(2).
+
+   Trades (both force-closed at the last bar, in column order):
+     - [0] = A: entry 2024-01-04, holding 1 bar, pnl = -.cost_A.
+     - [1] = B: entry 2024-01-03, holding 2 bars, pnl = -.cost_B.
+     The entry timestamps are decreasing across the list; that inversion is
+     the pin.
+
+   Red-first (by rival-hypothesis mutation, per this file's head comment):
+   under the hypothesis that the sweep drops the columns before the first
+   traded one, the trade count reddens (1 against 2). Under the hypothesis
+   that it emits them in the other order — entry order, or the accumulator's
+   own newest-first order left unreversed — the instrument, entry-timestamp,
+   holding-period and pnl assertions all redden as a block. Each was
+   observed failing on its own and reverted. *)
+
+let force_close_order_is_column_order_not_entry_order () =
+  let dates =
+    [| "2024-01-01"; "2024-01-02"; "2024-01-03"; "2024-01-04"; "2024-01-05" |]
+  in
+  let flat_prices = [| 100.0; 100.0; 100.0; 100.0; 100.0 |] in
+  let w = 1.0 in
+  let price_frame =
+    make_frame
+      [
+        ("A", make_daily_series dates flat_prices);
+        ("B", make_daily_series dates flat_prices);
+      ]
+  in
+  let signal_frame =
+    make_frame
+      [
+        ("A", make_daily_series dates [| 0.0; 0.0; w; w; w |]);
+        ("B", make_daily_series dates [| 0.0; w; w; w; w |]);
+      ]
+  in
+  let rebalance_index = make_daily_index [| "2024-01-02"; "2024-01-03" |] in
+  let commission = 0.001 in
+  let slippage = 0.0005 in
+  let c = commission +. slippage in
+  let cost_b = c *. w *. 1.0 in
+  let equity_1 = 1.0 -. cost_b in
+  let cost_a = c *. w *. equity_1 in
+  let equity_2 = equity_1 -. cost_a in
+  match
+    Cairos_engine.Backtest.run ~price_frame ~signal_frame ~rebalance_index
+      ~commission ~slippage
+  with
+  | Error e -> Alcotest.fail (Cairos_engine.Backtest.err_to_string e)
+  | Ok result -> (
+      check_float_array_close ~tol:1e-10 ~msg:"equity_curve"
+        [| 1.0; equity_1; equity_2; equity_2; equity_2 |]
+        (Nx.to_array (Cairos.Series.values result.equity_curve));
+      check_float_array_close ~tol:1e-10 ~msg:"weights[A]"
+        [| 0.0; 0.0; w; w; w |]
+        (frame_get_values "A" result.weights);
+      check_float_array_close ~tol:1e-10 ~msg:"weights[B]" [| 0.0; w; w; w; w |]
+        (frame_get_values "B" result.weights);
+      Alcotest.(check int)
+        "trade count (one force-close per instrument)" 2
+        (Cairos.Nonempty.length result.trades);
+      match Cairos.Nonempty.to_list result.trades with
+      | [ first; second ] ->
+          Alcotest.(check string)
+            "trades[0] instrument (earlier column, later entry)" "A"
+            first.instrument;
+          Alcotest.(check ptime_testable)
+            "trades[0] entry_timestamp"
+            (ptime_of_date "2024-01-04T00:00:00Z")
+            first.entry_timestamp;
+          Alcotest.(check int)
+            "trades[0] holding_period_bars" 1 first.holding_period_bars;
+          Alcotest.(check (float 1e-10))
+            "trades[0] pnl (entry cost only)" (-.cost_a) first.pnl;
+          Alcotest.(check string)
+            "trades[1] instrument (later column, earlier entry)" "B"
+            second.instrument;
+          Alcotest.(check ptime_testable)
+            "trades[1] entry_timestamp"
+            (ptime_of_date "2024-01-03T00:00:00Z")
+            second.entry_timestamp;
+          Alcotest.(check int)
+            "trades[1] holding_period_bars" 2 second.holding_period_bars;
+          Alcotest.(check (float 1e-10))
+            "trades[1] pnl (entry cost only)" (-.cost_b) second.pnl
+      | ts ->
+          Alcotest.failf "expected exactly two trades, got %d" (List.length ts))
+
+(* === Test 11: consecutive_round_trips_emit_trades_in_close_order ===
+
+   No fixture in the repository closes two trades *during* the loop: every
+   multi-trade run in this file closes one by resolution or sign flip and
+   the rest by end-of-backtest force close. So the order in which the loop's
+   own closes accumulate relative to each other is pinned by nothing —
+   established by mutation: leaving the accumulator's first trade at its
+   head instead of the most recent one left [dune runtest --force] at exit
+   0, and no test observed a difference.
+
+   Two round trips on one instrument, both resolved before the last bar, is
+   the smallest input that separates them. Prices are flat throughout, so
+   each trade's pnl is exactly its two cost charges and no price effect can
+   make a mis-ordered pair look right.
+
+   Setup:
+     dates       = [2024-01-01 .. 2024-01-06]
+     prices      = flat at 100.
+     signals     = [0; 1; 0; 1; 0; 0]
+     rebalance   = [t=1; t=2; t=3; t=4]
+     commission  = 0.001
+     slippage    = 0.0005   (c = 0.0015)
+
+   Derivation — flat prices make every mark-to-market step a no-op, so NAV
+   moves only by the charge [c *. |dw| *. nav], and every [|dw|] here is
+   1.0:
+     - [t=0]: nothing held. equity.(0) = 1.0.
+     - [t=1]: open. equity.(1) = 1.0 *. (1 -. c). Executes at bar 2.
+     - [t=2]: close. equity.(2) = equity.(1) *. (1 -. c). Trade 1 resolves
+         at bar 3, carrying both charges: pnl = equity.(2) -. 1.0.
+     - [t=3]: open again. equity.(3) = equity.(2) *. (1 -. c). Executes at
+         bar 4.
+     - [t=4]: close. equity.(4) = equity.(3) *. (1 -. c). Trade 2 resolves
+         at bar 5, carrying both of its charges:
+         pnl = equity.(4) -. equity.(2).
+     - [t=5]: nothing held. equity.(5) = equity.(4).
+
+   Both trades close inside the loop and nothing is open at the end, so the
+   force-close sweep contributes nothing and the list is the loop's own
+   closes alone, oldest first.
+
+   Red-first (by rival-hypothesis mutation, per this file's head comment):
+   under the hypothesis that the accumulator is not ordered newest-first —
+   or is emitted without being reversed — [trades[0] entry_timestamp] and
+   [trades[1] entry_timestamp] redden as a pair while the equity curve and
+   the trade count stay green, because only the order is in question. This
+   was observed failing and reverted. *)
+
+let consecutive_round_trips_emit_trades_in_close_order () =
+  let dates =
+    [|
+      "2024-01-01";
+      "2024-01-02";
+      "2024-01-03";
+      "2024-01-04";
+      "2024-01-05";
+      "2024-01-06";
+    |]
+  in
+  let flat_prices = [| 100.0; 100.0; 100.0; 100.0; 100.0; 100.0 |] in
+  let w = 1.0 in
+  let price_frame = make_frame [ ("A", make_daily_series dates flat_prices) ] in
+  let signal_frame =
+    make_frame [ ("A", make_daily_series dates [| 0.0; w; 0.0; w; 0.0; 0.0 |]) ]
+  in
+  let rebalance_index =
+    make_daily_index
+      [| "2024-01-02"; "2024-01-03"; "2024-01-04"; "2024-01-05" |]
+  in
+  let commission = 0.001 in
+  let slippage = 0.0005 in
+  let c = commission +. slippage in
+  let equity_1 = 1.0 *. (1.0 -. c) in
+  let equity_2 = equity_1 *. (1.0 -. c) in
+  let equity_3 = equity_2 *. (1.0 -. c) in
+  let equity_4 = equity_3 *. (1.0 -. c) in
+  match
+    Cairos_engine.Backtest.run ~price_frame ~signal_frame ~rebalance_index
+      ~commission ~slippage
+  with
+  | Error e -> Alcotest.fail (Cairos_engine.Backtest.err_to_string e)
+  | Ok result -> (
+      check_float_array_close ~tol:1e-10 ~msg:"equity_curve"
+        [| 1.0; equity_1; equity_2; equity_3; equity_4; equity_4 |]
+        (Nx.to_array (Cairos.Series.values result.equity_curve));
+      Alcotest.(check int)
+        "trade count (one per round trip)" 2
+        (Cairos.Nonempty.length result.trades);
+      match Cairos.Nonempty.to_list result.trades with
+      | [ first; second ] ->
+          Alcotest.(check ptime_testable)
+            "trades[0] entry_timestamp (the earlier round trip)"
+            (ptime_of_date "2024-01-03T00:00:00Z")
+            first.entry_timestamp;
+          Alcotest.(check ptime_testable)
+            "trades[0] exit_timestamp"
+            (ptime_of_date "2024-01-04T00:00:00Z")
+            first.exit_timestamp;
+          Alcotest.(check (float 1e-10))
+            "trades[0] pnl (both of its charges)" (equity_2 -. 1.0) first.pnl;
+          Alcotest.(check ptime_testable)
+            "trades[1] entry_timestamp (the later round trip)"
+            (ptime_of_date "2024-01-05T00:00:00Z")
+            second.entry_timestamp;
+          Alcotest.(check ptime_testable)
+            "trades[1] exit_timestamp"
+            (ptime_of_date "2024-01-06T00:00:00Z")
+            second.exit_timestamp;
+          Alcotest.(check (float 1e-10))
+            "trades[1] pnl (both of its charges)" (equity_4 -. equity_2)
+            second.pnl
+      | ts ->
+          Alcotest.failf "expected exactly two trades, got %d" (List.length ts))
+
 let () =
   Alcotest.run "cairos_engine known outcomes"
     [
@@ -1275,5 +1760,14 @@ let () =
             two_instruments_unequal_weights_known_pnl;
           Alcotest.test_case "mid_series_size_adjustment_segment_sum_pnl" `Quick
             mid_series_size_adjustment_segment_sum_pnl;
+          Alcotest.test_case "exit_to_flat_resolves_trade_at_execution_bar"
+            `Quick exit_to_flat_resolves_trade_at_execution_bar;
+          Alcotest.test_case "leading_all_zero_rebalance_is_inert" `Quick
+            leading_all_zero_rebalance_is_inert;
+          Alcotest.test_case "force_close_order_is_column_order_not_entry_order"
+            `Quick force_close_order_is_column_order_not_entry_order;
+          Alcotest.test_case
+            "consecutive_round_trips_emit_trades_in_close_order" `Quick
+            consecutive_round_trips_emit_trades_in_close_order;
         ] );
     ]

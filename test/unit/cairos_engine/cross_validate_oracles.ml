@@ -235,12 +235,10 @@ let check_engine_finite ~scenario_id ~bar ~value =
 (* --- engine run ----------------------------------------------------------- *)
 
 let frame_index frame =
-  match Cairos.Frame.columns frame with
-  | [] -> die_tooling "frame has no columns"
-  | name :: _ -> (
-      match Cairos.Frame.get name frame with
-      | Some s -> Cairos.Series.index s
-      | None -> die_tooling "frame missing column %S" name)
+  let name = Cairos.Nonempty.hd (Cairos.Frame.columns frame) in
+  match Cairos.Frame.get name frame with
+  | Some s -> Cairos.Series.index s
+  | None -> die_tooling "frame missing column %S" name
 
 let build_rebalance_index ~scenario_id ~price_idx ~bars =
   let price_ts = Cairos.Index.timestamps price_idx in
@@ -270,8 +268,10 @@ let run_engine ~scenario_id ~prices_path ~signals_path ~params =
      about the engine. Checked here so it exits 2 with the two column lists
      named, instead of reaching [Backtest.run] and surfacing as a validation
      error about the book. *)
-  let price_cols = Cairos.Frame.columns price_frame
-  and signal_cols = Cairos.Frame.columns signal_frame in
+  let price_cols = Cairos.Nonempty.to_list (Cairos.Frame.columns price_frame)
+  and signal_cols =
+    Cairos.Nonempty.to_list (Cairos.Frame.columns signal_frame)
+  in
   if price_cols <> signal_cols then
     die_tooling "%s: price columns [%s] but signal columns [%s]" scenario_id
       (String.concat "; " price_cols)

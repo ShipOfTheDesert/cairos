@@ -11,3 +11,4 @@ let to_list { head; tail } = head :: tail
 let hd { head; _ } = head
 let tl { tail; _ } = tail
 let length { tail; _ } = 1 + List.length tail
+let map f { head; tail } = { head = f head; tail = List.map f tail }

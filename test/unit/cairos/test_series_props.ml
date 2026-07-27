@@ -134,6 +134,84 @@ let ffill_no_nan_after_first_valid =
           in
           len_unchanged && no_nan_after_i0)
 
+(* [Series.make] rejects a 0-dimensional values tensor at every dtype and
+   every index length, and reaches that rejection without raising.
+
+   "Never raises" is the property, not a formality: before the guard,
+   [(Nx.shape values).(0)] raised [Invalid_argument] on a 0-d tensor, which is
+   the only place in [lib/] where a library function could raise. An
+   escaped exception fails the QCheck test, so the two halves of the claim are
+   pinned by the same run.
+
+   Index length 0 is drawn deliberately: at that length an implementation that
+   read a 0-d tensor as "length 0" would return [Ok], so those draws
+   discriminate the guard from the length-mismatch check. The four dtypes span
+   both dtype value representations ([float] and boxed [int32]/[int64]), since
+   the shape read the guard protects is dtype-agnostic and a guard written
+   against one representation would be caught by the others. *)
+type zero_dim_values =
+  | F64 of float
+  | F32 of float
+  | I32 of int32
+  | I64 of int64
+
+(* Daily index of [n] synthetic timestamps stepping from the shared epoch;
+   [n = 0] yields the empty index. The [Error] branch is unreachable (strictly
+   increasing finite POSIX seconds) and terminates with [failwith] per the
+   generator carve-out: a generator must hand back an [Index.t], not a
+   [result]. *)
+let daily_index_of_length n =
+  let ts =
+    Array.init n (fun i ->
+        Qcheck_gen.epoch_2024_01_01_utc +. (float_of_int i *. 86_400.0))
+  in
+  match Cairos.Index.of_unix_floats Cairos.Freq.Day ts with
+  | Ok idx -> idx
+  | Error e ->
+      failwith
+        ("test_series_props: of_unix_floats: " ^ Cairos.Index.err_to_string e)
+
+let zero_dim_case_arb =
+  let open QCheck in
+  let gen =
+    let open Gen in
+    let* n = int_range 0 8 in
+    let* values =
+      oneof
+        [
+          (float_range (-1e6) 1e6 >|= fun x -> F64 x);
+          (float_range (-1e6) 1e6 >|= fun x -> F32 x);
+          (int_range (-1000) 1000 >|= fun x -> I32 (Int32.of_int x));
+          (int_range (-1000) 1000 >|= fun x -> I64 (Int64.of_int x));
+        ]
+    in
+    return (n, values)
+  in
+  let dtype_label = function
+    | F64 _ -> "float64"
+    | F32 _ -> "float32"
+    | I32 _ -> "int32"
+    | I64 _ -> "int64"
+  in
+  make
+    ~print:(fun (n, values) ->
+      Printf.sprintf "<0-d %s values, index len=%d>" (dtype_label values) n)
+    gen
+
+let prop_series_make_zero_dim_never_raises =
+  QCheck.Test.make ~count:200 ~name:"prop_series_make_zero_dim_never_raises"
+    zero_dim_case_arb (fun (n, values) ->
+      let index = daily_index_of_length n in
+      match values with
+      | F64 x ->
+          Result.is_error (Cairos.Series.make index (Nx.scalar Nx.float64 x))
+      | F32 x ->
+          Result.is_error (Cairos.Series.make index (Nx.scalar Nx.float32 x))
+      | I32 x ->
+          Result.is_error (Cairos.Series.make index (Nx.scalar Nx.int32 x))
+      | I64 x ->
+          Result.is_error (Cairos.Series.make index (Nx.scalar Nx.int64 x)))
+
 let () =
   Qcheck_gen.pin_seed_from_env ();
   let tests =
@@ -144,6 +222,7 @@ let () =
         shift_round_trip_overlap_is_identity;
         slice_clamped_length_formula;
         ffill_no_nan_after_first_valid;
+        prop_series_make_zero_dim_never_raises;
       ]
   in
   Alcotest.run "Series.props" [ ("property", tests) ]

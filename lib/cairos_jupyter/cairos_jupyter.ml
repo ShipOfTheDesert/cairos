@@ -32,7 +32,7 @@ let pp_first_valid name s =
   | Some (i, v) -> Printf.printf "%s first non-NaN at [%d]: %.2f\n" name i v
 
 let pp_frame ?(n = 3) frame =
-  let cols = Frame.columns frame in
+  let cols = Nonempty.to_list (Frame.columns frame) in
   let tail_f = Frame.tail n frame in
   Printf.printf "Frame columns: %s\n" (String.concat ", " cols);
   List.iter

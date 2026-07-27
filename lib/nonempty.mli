@@ -33,3 +33,7 @@ val tl : 'a t -> 'a list
 
 val length : 'a t -> int
 (** [length ne] returns the number of elements, always at least [1]. *)
+
+val map : ('a -> 'b) -> 'a t -> 'b t
+(** [map f ne] applies [f] to every element, preserving length and order.
+    Non-emptiness is preserved by construction — no [option] at the result. *)

@@ -153,7 +153,7 @@ let frame_of_csv_standard_shape_loads_columns_by_header () =
   | Ok frame ->
       Alcotest.(check (list string))
         "columns in source-file order" [ "AAPL"; "MSFT"; "GOOG" ]
-        (Cairos.Frame.columns frame);
+        (Cairos.Nonempty.to_list (Cairos.Frame.columns frame));
       let aapl = get_series "AAPL" frame in
       let msft = get_series "MSFT" frame in
       let goog = get_series "GOOG" frame in
@@ -182,7 +182,7 @@ let frame_of_csv_with_no_header_uses_positional_names () =
       Alcotest.(check (list string))
         "positional column names"
         [ "col_1"; "col_2"; "col_3" ]
-        (Cairos.Frame.columns frame)
+        (Cairos.Nonempty.to_list (Cairos.Frame.columns frame))
 
 let frame_of_csv_nan_fills_offset_listings () =
   match
@@ -281,7 +281,7 @@ let frame_of_csv_with_no_header_wider_subsequent_rows_truncates_silently () =
   | Ok frame ->
       Alcotest.(check (list string))
         "columns derived from first row width" [ "col_1"; "col_2" ]
-        (Cairos.Frame.columns frame);
+        (Cairos.Nonempty.to_list (Cairos.Frame.columns frame));
       let c1 = get_series "col_1" frame in
       let c2 = get_series "col_2" frame in
       Alcotest.(check (array (float 0.0)))

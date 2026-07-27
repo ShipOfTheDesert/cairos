@@ -1,0 +1,17 @@
+(* Self-test fixture for the `lint-asserts` recipe in the justfile — the only
+   consumer of this file. It is not built: the `.fixture` suffix keeps it out
+   of dune's sight, and its contents need only lex the way engine source lexes.
+
+   Contract: this file must FAIL the gate (exit 1), because the [assert false]
+   below is real code. *)
+
+(* A char literal holding a double quote. A comment stripper that treats every
+   [']  as a string delimiter opens a string here, runs to end of file, and
+   strips the real violation below — passing a dirty tree. *)
+let quote_char = '"'
+
+(* Shaped after the position-state match that carried site :395 before feature
+   0065 collapsed [held] / [in_flight]. *)
+let entry_leg_exn = function Some leg -> leg | None -> assert false
+
+let weight_before held j t = if t = 0 then 0.0 else held.(j).(t - 1)

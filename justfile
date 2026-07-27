@@ -93,8 +93,29 @@ bench-compare:
 fmt:
     opam exec -- dune fmt
 
+# `--force` re-runs the dune *rules*, but odoc's own outputs stay cached under
+# _build/default/_doc, so a broken {!Reference} that warned on the first run
+# passes silently on every run after it — the recipe reports cache state, not
+# documentation state (feature 0062 Step 2; the dune-odoc-force-flag handbook).
+# Clearing _doc first is what makes the invocation discriminate, and odoc warns
+# rather than failing, so the grep is what makes it a gate. The tree is
+# warning-free, so this needs no allowlist and no baseline count.
 lint-doc:
-    opam exec -- dune build @doc --force
+    #!/usr/bin/env bash
+    set -euo pipefail
+    rm -rf _build/default/_doc
+    rc=0
+    out=$(opam exec -- dune build @doc --force 2>&1) || rc=$?
+    printf '%s' "$out" | grep -v '^$' || true
+    if [ "$rc" -ne 0 ]; then
+        echo "lint-doc: FAIL — the doc build itself failed (exit $rc)." >&2
+        exit "$rc"
+    fi
+    if printf '%s' "$out" | grep -q 'Warning:'; then
+        echo "lint-doc: FAIL — odoc emitted the warnings above. Resolve the reference," \
+             "or demote it to a code span if it names a module odoc does not build." >&2
+        exit 1
+    fi
 
 lint-fmt:
     opam exec -- dune build @fmt
@@ -102,7 +123,55 @@ lint-fmt:
 lint-opam:
     opam exec -- opam-dune-lint
 
-lint: lint-doc lint-fmt lint-opam
+# Zero `assert` tokens in engine source outside comments and string literals.
+# The engine's stated invariant is that no exception is ever raised, and
+# `assert false` breaks it; two code reviews found the unreachability comments
+# justifying the nine deleted sites had gone stale, which is why the invariant
+# needs a gate rather than a convention.
+#
+# Self-tests in all three directions against the committed fixtures before
+# scanning the real tree. A gate proven once by hand is a gate that rots, and
+# the comment direction is not hypothetical — lib/cairos_io/cairos_io.ml:82
+# names the token in prose today. The exit-2 arm is the one that matters most:
+# if the lexer loses sync it strips the rest of the file as comment text, so a
+# fail-open scan would report a clean tree.
+#
+# Scope is lib/cairos_engine/*.ml and nothing else, stated here rather than left
+# to be inferred from the glob: lib/cairos_io/cairos_io.ml:82 (a comment) and
+# test/unit/cairos_engine/cross_validate_oracles.ml:525 (real code) carry the
+# token today and are deliberately unguarded.
+#
+# Exit codes follow `bench-compare`: 0 clean, 1 violation, 2 tooling failure —
+# which includes a self-test that did not behave as specified.
+lint-asserts:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    fixtures=test/lint/fixtures
+    rc=0
+    scripts/lint-asserts.sh "$fixtures/dirty_engine.ml.fixture" >/dev/null 2>&1 || rc=$?
+    if [ "$rc" -ne 1 ]; then
+        echo "lint-asserts: SELF-TEST FAILED — $fixtures/dirty_engine.ml.fixture" \
+             "must exit 1, got $rc. The gate does not detect a real assert." >&2
+        exit 2
+    fi
+    rc=0
+    scripts/lint-asserts.sh "$fixtures/comment_engine.ml.fixture" >/dev/null || rc=$?
+    if [ "$rc" -ne 0 ]; then
+        echo "lint-asserts: SELF-TEST FAILED — $fixtures/comment_engine.ml.fixture" \
+             "must exit 0, got $rc. The gate matches the token in comments or strings." >&2
+        exit 2
+    fi
+    rc=0
+    scripts/lint-asserts.sh "$fixtures/truncated_engine.ml.fixture" >/dev/null 2>&1 || rc=$?
+    if [ "$rc" -ne 2 ]; then
+        echo "lint-asserts: SELF-TEST FAILED — $fixtures/truncated_engine.ml.fixture" \
+             "must exit 2, got $rc. The gate does not detect that the lexer lost sync," \
+             "so it can strip a dirty file as comment text and report it clean." >&2
+        exit 2
+    fi
+    scripts/lint-asserts.sh lib/cairos_engine/*.ml
+
+lint: lint-doc lint-fmt lint-opam lint-asserts
 
 validate-generate:
     uv run validation/reference.py

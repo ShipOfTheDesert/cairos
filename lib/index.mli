@@ -1,7 +1,7 @@
 (** Frequency-tagged timestamp index.
 
     An [Index.t] carries a {!Freq.t} witness at the type level and wraps an
-    array of {!Ptime.t} timestamps. Smart constructors parse ISO 8601 strings;
+    array of [Ptime.t] timestamps. Smart constructors parse ISO 8601 strings;
     {!of_unix_floats} accepts raw POSIX seconds. *)
 
 type 'freq t
@@ -26,7 +26,7 @@ val err_to_string : err -> string
 
 (** {1 String smart constructors}
 
-    Parse ISO 8601 timestamps via {!Ptime.of_rfc3339}. Date-only strings (e.g.
+    Parse ISO 8601 timestamps via [Ptime.of_rfc3339]. Date-only strings (e.g.
     ["2024-01-15"]) are accepted and interpreted as midnight UTC. Timestamps
     must be strictly monotonically increasing. Return [Error] on any malformed
     string or non-monotonic ordering, with the failing element's position. *)

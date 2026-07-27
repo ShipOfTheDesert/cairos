@@ -1,6 +1,6 @@
 type 'freq t = {
   index : 'freq Index.t;
-  columns : (string * (float, Bigarray.float64_elt) Nx.t) list;
+  columns : (string * (float, Bigarray.float64_elt) Nx.t) Nonempty.t;
 }
 
 let indices_equal (a : _ Index.t) (b : _ Index.t) : bool =
@@ -46,22 +46,53 @@ let of_series pairs_ne =
           Ok
             {
               index = ref_index;
-              columns = List.map (fun (n, s) -> (n, Series.values s)) pairs;
+              columns =
+                Nonempty.map (fun (n, s) -> (n, Series.values s)) pairs_ne;
             })
 
 let get name frame =
-  match List.assoc_opt name frame.columns with
+  match List.assoc_opt name (Nonempty.to_list frame.columns) with
   | None -> None
   | Some values -> Some (Series.make_unsafe frame.index values)
 
-let columns frame = List.map fst frame.columns
+let columns frame = Nonempty.map fst frame.columns
+let index frame = frame.index
+
+let to_series frame =
+  Nonempty.map
+    (fun (name, values) -> (name, Series.make_unsafe frame.index values))
+    frame.columns
+
+(* Output shape is taken from [frame] — same index, same names in the same
+   order — so the concrete record literal is built directly rather than
+   through [of_series], whose two error cases cannot arise here.
+
+   The column position is threaded by decomposing [frame.columns] into head
+   and tail rather than by a counter inside [Nonempty.map]: [map]'s result
+   order is guaranteed but the order in which it applies its function is
+   not. *)
+let mapi_cells ~f frame =
+  let n_rows = Index.length frame.index in
+  let map_column col (name, values) =
+    let src = Nx.to_array values in
+    let dst = Array.make n_rows 0.0 in
+    for row = 0 to n_rows - 1 do
+      dst.(row) <- f ~col ~name ~row src.(row)
+    done;
+    (name, Nx.create Nx.float64 [| n_rows |] dst)
+  in
+  let head = map_column 0 (Nonempty.hd frame.columns) in
+  let tail =
+    List.mapi (fun i c -> map_column (i + 1) c) (Nonempty.tl frame.columns)
+  in
+  { index = frame.index; columns = Nonempty.make head tail }
 
 let head n frame =
   let len = Index.length frame.index in
   let stop = max 0 (min n len) in
   let index = Index.slice ~start:0 ~stop frame.index in
   let columns =
-    List.map
+    Nonempty.map
       (fun (name, values) -> (name, Nx.slice [ R (0, stop) ] values))
       frame.columns
   in
@@ -73,7 +104,7 @@ let tail n frame =
   let start = len - n' in
   let index = Index.slice ~start ~stop:len frame.index in
   let columns =
-    List.map
+    Nonempty.map
       (fun (name, values) -> (name, Nx.slice [ R (start, len) ] values))
       frame.columns
   in
@@ -144,7 +175,7 @@ let describe frame =
         end
       in
       (name, stats))
-    frame.columns
+    (Nonempty.to_list frame.columns)
 
 (* Cross-sectional operations.
 
@@ -159,25 +190,26 @@ let describe frame =
    — never via [of_series], which returns [result]. The invariants
    [of_series] validates (non-empty, index identity, distinct column names)
    hold by construction at every output: the index is reused verbatim, the
-   column-name list mirrors [frame.columns]'s names in order, and the
-   non-emptiness inherits from the input frame. *)
+   column-name list mirrors [frame.columns]'s names in order, and
+   non-emptiness is carried by [Nonempty.t]. *)
 
 (* Writes the cross-section at row [i] into the caller-allocated [scratch]
-   buffer. [Array.length scratch] must equal [List.length frame.columns];
-   no allocation per call. Internal to [frame.ml]; not exposed in [.mli]. *)
-let gather_row frame i scratch =
-  List.iteri
-    (fun j (_, values) -> scratch.(j) <- Nx.item [ i ] values)
-    frame.columns
+   buffer. [Array.length scratch] must equal [List.length cols]; no
+   allocation per call, which is why callers hoist [cols] out of the row
+   loop rather than re-listing [frame.columns] per row. Internal to
+   [frame.ml]; not exposed in [.mli]. *)
+let gather_row cols i scratch =
+  List.iteri (fun j (_, values) -> scratch.(j) <- Nx.item [ i ] values) cols
 
 let column_map ~f frame =
   (* Imperative row loop — see header above. *)
-  let n_cols = List.length frame.columns in
+  let cols = Nonempty.to_list frame.columns in
+  let n_cols = Nonempty.length frame.columns in
   let n_rows = Index.length frame.index in
   let scratch = Array.make n_cols 0.0 in
   let out = Array.make n_rows 0.0 in
   for i = 0 to n_rows - 1 do
-    gather_row frame i scratch;
+    gather_row cols i scratch;
     out.(i) <- f scratch
   done;
   let values = Nx.create Nx.float64 [| n_rows |] out in
@@ -185,19 +217,22 @@ let column_map ~f frame =
 
 let rank frame =
   (* Imperative row loop — see header above. *)
-  let n_cols = List.length frame.columns in
+  let cols = Nonempty.to_list frame.columns in
+  let n_cols = Nonempty.length frame.columns in
   let n_rows = Index.length frame.index in
   let scratch = Array.make n_cols 0.0 in
   let tie_buf = Array.make n_cols (0, 0.0) in
   let new_columns =
-    List.map
+    Nonempty.map
       (fun (name, _) ->
         (name, Nx.create Nx.float64 [| n_rows |] (Array.make n_rows Float.nan)))
       frame.columns
   in
-  let out_tensors = Array.of_list (List.map snd new_columns) in
+  let out_tensors =
+    Array.of_list (List.map snd (Nonempty.to_list new_columns))
+  in
   for i = 0 to n_rows - 1 do
-    gather_row frame i scratch;
+    gather_row cols i scratch;
     let non_nan_count = ref 0 in
     for j = 0 to n_cols - 1 do
       let v = scratch.(j) in
@@ -234,18 +269,21 @@ let rank frame =
 
 let zscore frame =
   (* Two-pass kernel; imperative row loop. *)
-  let n_cols = List.length frame.columns in
+  let cols = Nonempty.to_list frame.columns in
+  let n_cols = Nonempty.length frame.columns in
   let n_rows = Index.length frame.index in
   let scratch = Array.make n_cols 0.0 in
   let new_columns =
-    List.map
+    Nonempty.map
       (fun (name, _) ->
         (name, Nx.create Nx.float64 [| n_rows |] (Array.make n_rows Float.nan)))
       frame.columns
   in
-  let out_tensors = Array.of_list (List.map snd new_columns) in
+  let out_tensors =
+    Array.of_list (List.map snd (Nonempty.to_list new_columns))
+  in
   for i = 0 to n_rows - 1 do
-    gather_row frame i scratch;
+    gather_row cols i scratch;
     let n = ref 0 in
     let sum = ref 0.0 in
     for j = 0 to n_cols - 1 do

@@ -9,7 +9,7 @@ let of_series_single_column () =
   | Ok frame -> (
       Alcotest.(check (list string))
         "columns" [ "price" ]
-        (Cairos.Frame.columns frame);
+        (Cairos.Nonempty.to_list (Cairos.Frame.columns frame));
       match Cairos.Frame.get "price" frame with
       | None -> Alcotest.fail "expected Some for 'price'"
       | Some retrieved ->
@@ -36,7 +36,7 @@ let of_series_multiple_columns () =
       Alcotest.(check (list string))
         "columns in order"
         [ "price"; "volume"; "sma" ]
-        (Cairos.Frame.columns frame);
+        (Cairos.Nonempty.to_list (Cairos.Frame.columns frame));
       match Cairos.Frame.get "volume" frame with
       | None -> Alcotest.fail "expected Some for 'volume'"
       | Some retrieved ->
@@ -126,7 +126,210 @@ let columns_preserves_insertion_order () =
   | Ok frame ->
       Alcotest.(check (list string))
         "insertion order" [ "c"; "a"; "b" ]
-        (Cairos.Frame.columns frame)
+        (Cairos.Nonempty.to_list (Cairos.Frame.columns frame))
+
+let frame_columns_nonempty_roundtrip () =
+  let s1 = Test_helpers.make_daily_series dates_3 [| 1.0; 2.0; 3.0 |] in
+  let s2 = Test_helpers.make_daily_series dates_3 [| 4.0; 5.0; 6.0 |] in
+  let s3 = Test_helpers.make_daily_series dates_3 [| 7.0; 8.0; 9.0 |] in
+  match
+    Cairos.Frame.of_series
+      (Cairos.Nonempty.make ("z", s1) [ ("a", s2); ("m", s3) ])
+  with
+  | Error e -> Alcotest.fail e
+  | Ok frame ->
+      let cols = Cairos.Frame.columns frame in
+      Alcotest.(check string)
+        "head is the first inserted column" "z" (Cairos.Nonempty.hd cols);
+      Alcotest.(check (list string))
+        "insertion order" [ "z"; "a"; "m" ]
+        (Cairos.Nonempty.to_list cols);
+      Alcotest.(check (list (list (float 0.001))))
+        "every listed name retrieves its constructing values"
+        [ [ 1.0; 2.0; 3.0 ]; [ 4.0; 5.0; 6.0 ]; [ 7.0; 8.0; 9.0 ] ]
+        (List.map
+           (fun name ->
+             Array.to_list
+               (Nx.to_array
+                  (Cairos.Series.values (Test_helpers.frame_get_exn name frame))))
+           (Cairos.Nonempty.to_list cols))
+
+(* --- Shared index and total decomposition --- *)
+
+let frame_index_matches_member_series () =
+  let price =
+    Test_helpers.make_daily_series dates_3 [| 100.0; 200.0; 300.0 |]
+  in
+  let volume =
+    Test_helpers.make_daily_series dates_3 [| 1000.0; 2000.0; 3000.0 |]
+  in
+  match
+    Cairos.Frame.of_series
+      (Cairos.Nonempty.make ("price", price) [ ("volume", volume) ])
+  with
+  | Error e -> Alcotest.fail e
+  | Ok frame ->
+      let member = Test_helpers.frame_get_exn "volume" frame in
+      Alcotest.(check (array Test_helpers.ptime_testable))
+        "timestamps"
+        (Cairos.Index.timestamps (Cairos.Series.index member))
+        (Cairos.Index.timestamps (Cairos.Frame.index frame))
+
+let frame_to_series_inverts_of_series () =
+  let a = Test_helpers.make_daily_series dates_3 [| 1.0; 2.0; 3.0 |] in
+  let b = Test_helpers.make_daily_series dates_3 [| 4.0; 5.0; 6.0 |] in
+  let c = Test_helpers.make_daily_series dates_3 [| 7.0; 8.0; 9.0 |] in
+  match
+    Cairos.Frame.of_series
+      (Cairos.Nonempty.make ("c", c) [ ("a", a); ("b", b) ])
+  with
+  | Error e -> Alcotest.fail e
+  | Ok frame ->
+      let pairs = Cairos.Nonempty.to_list (Cairos.Frame.to_series frame) in
+      Alcotest.(check (list string))
+        "names in insertion order" [ "c"; "a"; "b" ] (List.map fst pairs);
+      Alcotest.(check (list (list (float 0.001))))
+        "values per column"
+        [ [ 7.0; 8.0; 9.0 ]; [ 1.0; 2.0; 3.0 ]; [ 4.0; 5.0; 6.0 ] ]
+        (List.map
+           (fun (_, s) -> Array.to_list (Nx.to_array (Cairos.Series.values s)))
+           pairs);
+      List.iter
+        (fun (name, s) ->
+          Alcotest.(check (array Test_helpers.ptime_testable))
+            ("shared index for " ^ name)
+            (Cairos.Index.timestamps (Cairos.Frame.index frame))
+            (Cairos.Index.timestamps (Cairos.Series.index s)))
+        pairs
+
+(* Encodes all four arguments [mapi_cells] hands to [f] into one float, so a
+   swapped col/row, a name paired with the wrong column's data, or a dropped
+   cell value each produce a different expected digit position. *)
+let mapi_cells_probe ~col ~name ~row v =
+  let name_digit =
+    match name with
+    | "z" -> 1.0
+    | "a" -> 2.0
+    | "m" -> 3.0
+    | _ -> 9.0
+  in
+  (v *. 1000.0)
+  +. (Float.of_int col *. 100.0)
+  +. (Float.of_int row *. 10.0)
+  +. name_digit
+
+let frame_mapi_cells_preserves_shape_and_index () =
+  let s1 = Test_helpers.make_daily_series dates_3 [| 1.0; 2.0; 3.0 |] in
+  let s2 = Test_helpers.make_daily_series dates_3 [| 4.0; 5.0; 6.0 |] in
+  let s3 = Test_helpers.make_daily_series dates_3 [| 7.0; 8.0; 9.0 |] in
+  match
+    Cairos.Frame.of_series
+      (Cairos.Nonempty.make ("z", s1) [ ("a", s2); ("m", s3) ])
+  with
+  | Error e -> Alcotest.fail e
+  | Ok frame ->
+      let out = Cairos.Frame.mapi_cells ~f:mapi_cells_probe frame in
+      Alcotest.(check (list string))
+        "column names in input order" [ "z"; "a"; "m" ]
+        (Cairos.Nonempty.to_list (Cairos.Frame.columns out));
+      Alcotest.(check (array Test_helpers.ptime_testable))
+        "shared index"
+        (Cairos.Index.timestamps (Cairos.Frame.index frame))
+        (Cairos.Index.timestamps (Cairos.Frame.index out));
+      Alcotest.(check (list (list (float 0.001))))
+        "cells carry col, name, row, and the input value"
+        [
+          [ 1001.0; 2011.0; 3021.0 ];
+          [ 4102.0; 5112.0; 6122.0 ];
+          [ 7203.0; 8213.0; 9223.0 ];
+        ]
+        (List.map
+           (fun name ->
+             Array.to_list
+               (Nx.to_array
+                  (Cairos.Series.values (Test_helpers.frame_get_exn name out))))
+           (Cairos.Nonempty.to_list (Cairos.Frame.columns out)));
+      Alcotest.(check (list (list (float 0.001))))
+        "input frame is unchanged"
+        [ [ 1.0; 2.0; 3.0 ]; [ 4.0; 5.0; 6.0 ]; [ 7.0; 8.0; 9.0 ] ]
+        (List.map
+           (fun name ->
+             Array.to_list
+               (Nx.to_array
+                  (Cairos.Series.values (Test_helpers.frame_get_exn name frame))))
+           (Cairos.Nonempty.to_list (Cairos.Frame.columns frame)))
+
+(* Physical equality, not structural. [frame.mli] states that [index] returns
+   "the index shared by every column" and that [mapi_cells] returns "the same
+   [Index.t]"; the engine relies on that sharing to avoid re-deriving
+   timestamps for [equity_curve], [returns] and the [weights] frame. A future
+   implementation that rebuilt an equal index — a slice, a round-trip through
+   [of_unix_floats] — would keep every structural check in this file green
+   while falsifying the docstring. [==] is the only assertion that can see the
+   difference. *)
+let frame_index_is_physically_shared () =
+  let a = Test_helpers.make_daily_series dates_3 [| 1.0; 2.0; 3.0 |] in
+  let b = Test_helpers.make_daily_series dates_3 [| 4.0; 5.0; 6.0 |] in
+  match Cairos.Frame.of_series (Cairos.Nonempty.make ("a", a) [ ("b", b) ]) with
+  | Error e -> Alcotest.fail e
+  | Ok frame ->
+      let idx = Cairos.Frame.index frame in
+      Cairos.Nonempty.to_list (Cairos.Frame.to_series frame)
+      |> List.iter (fun (name, s) ->
+          Alcotest.(check bool)
+            ("to_series shares the frame index for " ^ name)
+            true
+            (Cairos.Series.index s == idx));
+      let out =
+        Cairos.Frame.mapi_cells ~f:(fun ~col:_ ~name:_ ~row:_ v -> v) frame
+      in
+      Alcotest.(check bool)
+        "mapi_cells carries the input index through" true
+        (Cairos.Frame.index out == idx)
+
+(* [mapi_cells] at the shapes the dense 3x3 case above cannot reach: a
+   single-column frame exercises only the [Nonempty] head branch, an empty
+   frame exercises the zero-length [Nx.create], and a sliced frame hands the
+   implementation non-contiguous [Nx] views to materialise. *)
+let frame_mapi_cells_edge_shapes () =
+  let a = Test_helpers.make_daily_series dates_3 [| 1.0; 2.0; 3.0 |] in
+  let b = Test_helpers.make_daily_series dates_3 [| 4.0; 5.0; 6.0 |] in
+  let cells frame =
+    List.map
+      (fun name ->
+        Array.to_list
+          (Nx.to_array
+             (Cairos.Series.values (Test_helpers.frame_get_exn name frame))))
+      (Cairos.Nonempty.to_list (Cairos.Frame.columns frame))
+  in
+  let double ~col:_ ~name:_ ~row:_ v = v *. 2.0 in
+  (match Cairos.Frame.of_series (Cairos.Nonempty.make ("a", a) []) with
+  | Error e -> Alcotest.fail e
+  | Ok one ->
+      let out = Cairos.Frame.mapi_cells ~f:double one in
+      Alcotest.(check (list string))
+        "single column preserved" [ "a" ]
+        (Cairos.Nonempty.to_list (Cairos.Frame.columns out));
+      Alcotest.(check (list (list (float 0.001))))
+        "single-column cells"
+        [ [ 2.0; 4.0; 6.0 ] ]
+        (cells out));
+  match Cairos.Frame.of_series (Cairos.Nonempty.make ("a", a) [ ("b", b) ]) with
+  | Error e -> Alcotest.fail e
+  | Ok frame ->
+      let empty = Cairos.Frame.head 0 frame in
+      let out_empty = Cairos.Frame.mapi_cells ~f:double empty in
+      Alcotest.(check int)
+        "zero rows survive" 0
+        (Cairos.Index.length (Cairos.Frame.index out_empty));
+      Alcotest.(check (list (list (float 0.001))))
+        "zero-row cells" [ []; [] ] (cells out_empty);
+      let sliced = Cairos.Frame.tail 2 frame in
+      let out_sliced = Cairos.Frame.mapi_cells ~f:double sliced in
+      Alcotest.(check (list (list (float 0.001))))
+        "sliced views materialise correctly"
+        [ [ 4.0; 6.0 ]; [ 10.0; 12.0 ] ]
+        (cells out_sliced)
 
 let of_series_duplicate_column_name () =
   let s1 = Test_helpers.make_daily_series dates_3 [| 1.0; 2.0; 3.0 |] in
@@ -201,7 +404,8 @@ let frame_head_preserves_column_order () =
   | Ok frame ->
       let h = Cairos.Frame.head 2 frame in
       Alcotest.(check (list string))
-        "column order preserved" [ "z"; "a"; "m" ] (Cairos.Frame.columns h)
+        "column order preserved" [ "z"; "a"; "m" ]
+        (Cairos.Nonempty.to_list (Cairos.Frame.columns h))
 
 let frame_tail_returns_last_n_rows () =
   let price =
@@ -450,6 +654,22 @@ let tests =
     ( "columns_preserves_insertion_order",
       `Quick,
       columns_preserves_insertion_order );
+    ( "frame_columns_nonempty_roundtrip",
+      `Quick,
+      frame_columns_nonempty_roundtrip );
+    ( "frame_index_matches_member_series",
+      `Quick,
+      frame_index_matches_member_series );
+    ( "frame_to_series_inverts_of_series",
+      `Quick,
+      frame_to_series_inverts_of_series );
+    ( "frame_mapi_cells_preserves_shape_and_index",
+      `Quick,
+      frame_mapi_cells_preserves_shape_and_index );
+    ( "frame_index_is_physically_shared",
+      `Quick,
+      frame_index_is_physically_shared );
+    ("frame_mapi_cells_edge_shapes", `Quick, frame_mapi_cells_edge_shapes);
     ("frame_head_returns_first_n_rows", `Quick, frame_head_returns_first_n_rows);
     ("frame_head_clamps_to_length", `Quick, frame_head_clamps_to_length);
     ( "frame_head_preserves_column_order",

@@ -103,6 +103,31 @@ let make_fails_with_mismatched_lengths () =
       | Ok _ -> Alcotest.fail "expected Error for mismatched lengths"
       | Error _ -> ())
 
+(* A 0-dimensional values tensor has no leading axis to match the index
+   against, so [Series.make] rejects it instead of indexing [Nx.shape]'s empty
+   array, which raises [Invalid_argument].
+
+   The empty-index arm is the load-bearing one. Against a 3-element index an
+   implementation that silently read a 0-d tensor as "length 0" would also
+   return [Error], via the length mismatch, so that arm alone cannot tell the
+   guard from the mismatch check. Against an empty index the same wrong
+   implementation returns [Ok], so [Error] there can only mean the guard
+   fired. *)
+let series_make_zero_dim_returns_error () =
+  let index_of names =
+    match Cairos.Index.daily names with
+    | Ok idx -> idx
+    | Error e -> Alcotest.fail (Cairos.Index.err_to_string e)
+  in
+  let rejects label idx =
+    match Cairos.Series.make idx (Nx.scalar Nx.float64 42.0) with
+    | Ok _ -> Alcotest.fail ("expected Error for 0-d values against " ^ label)
+    | Error _ -> ()
+  in
+  rejects "an empty index" (index_of [||]);
+  rejects "a 3-element index"
+    (index_of [| "2024-01-01"; "2024-01-02"; "2024-01-03" |])
+
 let slice_produces_correct_subseries () =
   match
     Cairos.Index.daily
@@ -507,6 +532,9 @@ let tests =
     ( "make_fails_with_mismatched_lengths",
       `Quick,
       make_fails_with_mismatched_lengths );
+    ( "series_make_zero_dim_returns_error",
+      `Quick,
+      series_make_zero_dim_returns_error );
     ( "slice_produces_correct_subseries",
       `Quick,
       slice_produces_correct_subseries );

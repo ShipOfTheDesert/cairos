@@ -1,14 +1,17 @@
 (** Indexed time series over Nx tensors.
 
-    A [Series.t] pairs a frequency-tagged {!Index.t} with an {!Nx.t} tensor of
+    A [Series.t] pairs a frequency-tagged {!Index.t} with an [Nx.t] tensor of
     values. The frequency phantom type is preserved across all operations. *)
 
 type ('freq, 'v) t
 
 val make :
   'freq Index.t -> ('v, 'b) Nx.t -> (('freq, ('v, 'b) Nx.t) t, string) result
-(** Construct a series from index and values. Returns [Error msg] if
-    [Index.length index <> (Nx.shape values).(0)]. *)
+(** Construct a series from index and values. Returns [Error msg] if [values] is
+    0-dimensional — it has no leading axis to match the index against — or if
+    [Index.length index <> (Nx.shape values).(0)]. The 0-dimensional case is
+    checked first, so a 0-d tensor is rejected as such rather than reported as a
+    length mismatch. *)
 
 (** {1 Internal constructors}
 
