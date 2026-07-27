@@ -3,7 +3,8 @@
    Each property runs at [~count:200]; CI/local
    reproducibility is provided by [Qcheck_gen.pin_seed_from_env].
 
-   Frame retrieval round-trips through {!Series.make_unsafe} (frame.ml:55),
+   Frame retrieval round-trips through {!Series.make_unsafe}, called from
+   [get] and [columns_with_values] in lib/frame.ml,
    pairing the frame's shared index with the stored values tensor. The
    property suite asserts on the public Frame surface only — column names,
    the [Ok]/[Error] outcome of [of_series], and the values arrays exposed
@@ -60,9 +61,9 @@ let columns_in_insertion_order =
 
 (* Two-column construction succeeds whenever both series share
    the same index by construction. The negative case (mismatched indices →
-   [Error]) is pinned by [of_series_timestamp_mismatch] / [of_series_length_mismatch]
-   in test_frame.ml; this property pins the positive case across all input
-   shapes [paired_aligned_daily_arb] produces. *)
+   [Error]) is pinned by [of_series_timestamp_mismatch] /
+   [frame_index_mismatch_variant] in test_frame.ml; this property pins the
+   positive case across all input shapes [paired_aligned_daily_arb] produces. *)
 let two_column_construction_succeeds_on_identical_indices =
   QCheck.Test.make ~count:200
     ~name:"two_column_construction_succeeds_on_identical_indices"

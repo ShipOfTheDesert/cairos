@@ -17,7 +17,7 @@ let make_daily_series dates values =
   let nx = Nx.create Nx.float64 [| Array.length values |] values in
   match Cairos.Series.make idx nx with
   | Ok s -> s
-  | Error msg -> Alcotest.fail msg
+  | Error e -> Alcotest.fail (Cairos.Series.err_to_string e)
 
 let make_frame named_series =
   match named_series with
@@ -26,7 +26,7 @@ let make_frame named_series =
       let nonempty = Cairos.Nonempty.make (name, s) rest in
       match Cairos.Frame.of_series nonempty with
       | Ok f -> f
-      | Error msg -> Alcotest.fail msg)
+      | Error e -> Alcotest.fail (Cairos.Frame.err_to_string e))
 
 let ptime_of_date s =
   match Ptime.of_rfc3339 (s ^ "T00:00:00Z") with

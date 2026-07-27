@@ -4,6 +4,12 @@
  (libraries cairos nx ptime fmt alcotest))
 
 (test
+ (name test_freq)
+ (package cairos)
+ (modules test_freq)
+ (libraries cairos alcotest))
+
+(test
  (name test_index)
  (package cairos)
  (modules test_index)
@@ -93,7 +99,15 @@
  (name test_resample_props)
  (package cairos)
  (modules test_resample_props)
- (libraries qcheck_gen cairos nx ptime alcotest qcheck-core qcheck-alcotest))
+ (libraries
+  test_helpers
+  qcheck_gen
+  cairos
+  nx
+  ptime
+  alcotest
+  qcheck-core
+  qcheck-alcotest))
 
 (test
  (name test_frame_props)

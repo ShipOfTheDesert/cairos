@@ -35,7 +35,7 @@ let frame_of_columns = function
   | [] -> Alcotest.fail "frame_of_columns: empty column list"
   | (n, s) :: tl -> (
       match Cairos.Frame.of_series (Cairos.Nonempty.make (n, s) tl) with
-      | Error e -> Alcotest.fail e
+      | Error e -> Alcotest.fail (Cairos.Frame.err_to_string e)
       | Ok frame -> frame)
 
 (* Read each column's values as a [float array] in [Frame.columns] order.

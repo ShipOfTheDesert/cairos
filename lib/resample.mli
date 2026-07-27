@@ -10,11 +10,44 @@
     Daily -> Weekly, Daily -> Monthly, Weekly -> Monthly. Same-frequency and
     upsampling attempts return [Error]. *)
 
+(** {1 Errors}
+
+    {!resample} returns a structured error so callers can pattern-match on the
+    failure mode and recover the offending values without scanning error
+    strings. *)
+
+type err =
+  | Target_not_lower of { source : Freq.any; target : Freq.any }
+      (** [target] was not strictly lower than [source]. Equal frequencies are
+          rejected alongside upsamples: the total order is Minute < Hour < Day <
+          Week < Month, and only a strictly greater target rank is accepted.
+          This is the only variant a caller can observe. *)
+  | Unrepresentable_week_start of { timestamp : Ptime.t }
+      (** Internal: the Monday opening the ISO week containing [timestamp] could
+          not be computed. Structurally unreachable — subtracting a 0-6 day
+          offset from a valid [Ptime.t] cannot underflow [Ptime.min] — and
+          propagated rather than unwrapped so that no library function raises.
+          Only a [Week] target can produce it. *)
+  | Unrepresentable_bucket_timestamp of {
+      year : int;
+      month : int;
+      day : int;
+      hour : int;
+    }
+      (** Internal: the bucket boundary [year]-[month]-[day] at [hour]:00:00 UTC
+          could not be reconstructed as a [Ptime.t]. Structurally unreachable —
+          bucket keys are derived from valid [Ptime.t] values with only the
+          finer components zeroed — and propagated for the same reason as
+          [Unrepresentable_week_start]. *)
+
+val err_to_string : err -> string
+(** Render [err] as a human-readable one-line message. *)
+
 val resample :
   agg:[ `First | `Last | `Sum | `Mean | `Min | `Max ] ->
   'target Freq.t ->
   ('src, (float, 'b) Nx.t) Series.t ->
-  (('target, (float, Bigarray.float64_elt) Nx.t) Series.t, string) result
+  (('target, (float, Bigarray.float64_elt) Nx.t) Series.t, err) result
 (** [resample ~agg target_freq series] groups [series] into buckets aligned to
     [target_freq]'s calendar boundaries, aggregates each bucket using [agg], and
     returns a new series at [target_freq].
@@ -30,6 +63,6 @@ val resample :
     bucket boundary. Empty buckets are omitted — the output length equals the
     number of non-empty buckets.
 
-    Returns [Error msg] when [target_freq] is not strictly lower than the source
-    frequency. The frequency total order is: Minute < Hour < Daily < Weekly <
-    Monthly. *)
+    Returns [Error (Target_not_lower _)] when [target_freq] is not strictly
+    lower than the source frequency, carrying both frequency witnesses. The
+    frequency total order is: Minute < Hour < Daily < Weekly < Monthly. *)

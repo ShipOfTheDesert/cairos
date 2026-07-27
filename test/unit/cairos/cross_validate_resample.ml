@@ -26,7 +26,7 @@ let read_daily_series ~path :
     ([ `Daily ], (float, Bigarray.float64_elt) Nx.t) Series.t =
   match Cairos_io.of_csv ~freq:Freq.Day path with
   | Ok s -> s
-  | Error msg -> die_tooling "%s: %s" path msg
+  | Error e -> die_tooling "%s: %s" path (Cairos_io.err_to_string e)
 
 let read_lines path = Validate_support.read_lines ~binary path
 
@@ -104,7 +104,7 @@ let compare_monthly ~name ~expected ~actual_ts ~actual_v : float =
 let resample_monthly ~agg series =
   match Resample.resample ~agg Freq.Month series with
   | Ok s -> s
-  | Error msg -> die_tooling "resample to monthly: %s" msg
+  | Error e -> die_tooling "resample to monthly: %s" (Resample.err_to_string e)
 
 (* The final source month (March 2025) is truncated at 2025-03-14, mid-month.
    A truncated month must be matched as a real bucket, not dropped. The compare

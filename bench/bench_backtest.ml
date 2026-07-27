@@ -103,7 +103,8 @@ let frame_from_columns ~idx ~values =
       let ne = Cairos.Nonempty.make first rest in
       match Cairos.Frame.of_series ne with
       | Ok f -> f
-      | Error e -> failwith ("bench_backtest frame: " ^ e))
+      | Error e ->
+          failwith ("bench_backtest frame: " ^ Cairos.Frame.err_to_string e))
 
 let rebalance_index_for ~price_idx ~rebalance_bars =
   let price_ts = Cairos.Index.timestamps price_idx in

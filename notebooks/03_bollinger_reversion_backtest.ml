@@ -51,7 +51,9 @@
 (* *)
 (* Both backtest notebooks share a small `notebooks/_helpers.ml` file that *)
 (* holds one piece of boilerplate: `unwrap`, a terse notebook-style *)
-(* `Result` unwrap that fails loudly on `Error`. Factoring shared *)
+(* `Result` unwrap that fails loudly on `Error`. It takes the failing *)
+(* module's own `err_to_string` as `~render`, since every fallible entry *)
+(* point returns its own closed error variant. Factoring shared *)
 (* boilerplate into a sibling `.ml` file and loading it with `#use` is the *)
 (* common real-world practice for notebook series that share helper *)
 (* functions — keeping each notebook's body focused on the strategy, not *)
@@ -87,7 +89,7 @@ open Cairos
 
 (* %% vscode={"languageId": "ocaml"} *)
 let prices =
-  unwrap "Cairos_io.of_csv"
+  unwrap ~render:Cairos_io.err_to_string "Cairos_io.of_csv"
     (Cairos_io.of_csv ~freq:Freq.Day "data/03_bollinger_reversion.csv")
 
 let () = Cairos_jupyter.pp_series "prices" prices
@@ -110,7 +112,7 @@ let sma_20 = Window.sma ~n:20 prices
 let std_20 = Window.rolling_std ~n:20 prices
 
 let aligned_mean_std =
-  unwrap "align sma_20/std_20"
+  unwrap ~render:Align.err_to_string "align sma_20/std_20"
     (Align.align ~strategy:`Inner sma_20 std_20)
 
 let upper_band =
@@ -152,21 +154,21 @@ let () =
 (* %% vscode={"languageId": "ocaml"} *)
 let below_lower =
   let paired =
-    unwrap "align prices/lower_band"
+    unwrap ~render:Align.err_to_string "align prices/lower_band"
       (Align.align ~strategy:`Inner prices lower_band)
   in
   Align.map2 (fun p l -> if p < l then 1.0 else 0.0) paired
 
 let above_sma =
   let paired =
-    unwrap "align prices/sma_20"
+    unwrap ~render:Align.err_to_string "align prices/sma_20"
       (Align.align ~strategy:`Inner prices sma_20)
   in
   Align.map2 (fun p m -> if p > m then 1.0 else 0.0) paired
 
 let event =
   let paired =
-    unwrap "align below_lower/above_sma"
+    unwrap ~render:Align.err_to_string "align below_lower/above_sma"
       (Align.align ~strategy:`Inner below_lower above_sma)
   in
   Align.map2 (fun b a -> b -. a) paired
@@ -205,7 +207,7 @@ let returns = Series.pct_change prices
 
 let stgret =
   let paired =
-    unwrap "align lagged_position/returns"
+    unwrap ~render:Align.err_to_string "align lagged_position/returns"
       (Align.align ~strategy:`Inner lagged_position returns)
   in
   Align.map2 ( *. ) paired

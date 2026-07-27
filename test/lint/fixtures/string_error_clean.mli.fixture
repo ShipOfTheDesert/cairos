@@ -1,0 +1,71 @@
+(* Self-test fixture for the `lint-string-errors` recipe in the justfile — the
+   only consumer of this file. It is not built: the `.fixture` suffix keeps it
+   out of dune's sight. That matters more here than it does for the assert
+   gate's fixtures, because `dune fmt` reflows every .ml and .mli file dune can
+   see, anywhere in the tree — including a fixture whose whole point is the
+   exact line break ocamlformat chose (string_error_wrapped.mli.fixture).
+
+   Contract: this file must PASS the gate (exit 0). Every occurrence of the
+   guarded shape below sits in a comment, a string literal, or a signature
+   whose error side is structured.
+
+   Prose naming the forbidden shape is the ordinary case, not a hypothetical
+   one: CONTRIBUTING section X does it while describing what this gate
+   forbids, and a doc comment explaining why a surface stopped returning
+   (_, string) result is the natural place for the next one.
+
+   (* A nested comment, one level deeper: (int, string) result again. A
+      stripper that closes the outer comment at the inner terminator reads the
+      rest of this block as code. *)
+
+   OCaml lexes string literals inside comments, so this "*)" does not close the
+   comment: (unit, string) result.
+*)
+
+type 'freq t
+
+type err =
+  | Bad_column of { name : string }
+  | Bad_length of { expected : int; found : int }
+
+val err_to_string : err -> string
+(** A bare [string] return type is not an error side. The gate must not fire on
+    it, or every renderer this feature added becomes a violation. *)
+
+val of_series : (string * 'freq t) list -> ('freq t, err) result
+(** The structured shape. *)
+
+val to_csv : 'freq t -> (string, err) result
+(** [string] on the {e success} side is not what the gate guards: a scan that
+    matches the token rather than its position fires here. *)
+
+val column : string -> 'freq t -> ('freq, string) Series.t option
+(** [, string)] followed by something other than [result] is an ordinary type
+    application — the two-parameter [Series.t] carries a value type, not an
+    error. *)
+
+val summaries : ('freq, string) result_summary list
+(** A type whose name merely begins with [result]. The match stops at an
+    identifier boundary, or every such type becomes a violation. *)
+
+val parse_field : int -> (int, err_string) result
+(** A structured error side whose type name merely {e ends} in [string]. The
+    leading comma in the pattern is the identifier boundary on that side; drop
+    it and this line matches on its [string) result] tail. The mirror of
+    [result_summary] above. *)
+
+val decode : string -> (int, err) Stdlib.result
+(** The qualified spelling with a structured error side. In scope for the gate
+    (see string_error_qualified.mli.fixture), so it must still be judged on the
+    error side rather than on the qualification. *)
+
+val legacy_parse : string -> (int, err) result
+[@@deprecated "returned (int, string) result before the migration"]
+
+val reflowed_note : string
+[@@note
+  "ocamlformat reflows a long literal across lines with a backslash \
+   continuation, which can split the shape itself: (int, \
+   string) result"]
+
+val quoted_note : string [@@note {|(int, string) result inside a quoted literal|}]

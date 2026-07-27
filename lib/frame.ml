@@ -3,6 +3,27 @@ type 'freq t = {
   columns : (string * (float, Bigarray.float64_elt) Nx.t) Nonempty.t;
 }
 
+type err =
+  | Duplicate_column of { name : string }
+  | Index_mismatch of {
+      column : string;
+      expected_length : int;
+      found_length : int;
+    }
+
+let err_to_string = function
+  | Duplicate_column { name } -> Printf.sprintf "duplicate column name %S" name
+  (* One message, not a branch on the two lengths being equal: message prose is
+     non-contractual, so no test may assert which branch was taken, and a
+     branch whose only observable output cannot be pinned is untestable by
+     construction. Both lengths are always printed; equal counts mean the
+     timestamps themselves differ, which the message says. *)
+  | Index_mismatch { column; expected_length; found_length } ->
+      Printf.sprintf
+        "index mismatch for column %S: the reference index has %d timestamps, \
+         this column has %d (equal counts mean the timestamps differ)"
+        column expected_length found_length
+
 let indices_equal (a : _ Index.t) (b : _ Index.t) : bool =
   let ts_a = Index.timestamps a in
   let ts_b = Index.timestamps b in
@@ -28,17 +49,25 @@ let of_series pairs_ne =
   let rest = Nonempty.tl pairs_ne in
   let pairs = Nonempty.to_list pairs_ne in
   match has_duplicate_names pairs with
-  | Some name ->
-      Error ("Frame.of_series: duplicate column name \"" ^ name ^ "\"")
+  | Some name -> Error (Duplicate_column { name })
   | None -> (
       let ref_index = Series.index first_series in
       let rec validate = function
         | [] -> Ok ()
         | (name, s) :: tl ->
-            if indices_equal ref_index (Series.index s) then validate tl
+            let s_index = Series.index s in
+            if indices_equal ref_index s_index then validate tl
             else
+              (* [Index.length] on both sides is paid only here, on the
+                 rejecting branch — the accepting branch never leaves
+                 [indices_equal]. *)
               Error
-                ("Frame.of_series: index mismatch for column \"" ^ name ^ "\"")
+                (Index_mismatch
+                   {
+                     column = name;
+                     expected_length = Index.length ref_index;
+                     found_length = Index.length s_index;
+                   })
       in
       match validate rest with
       | Error _ as e -> e

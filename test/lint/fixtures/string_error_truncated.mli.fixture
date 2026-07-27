@@ -1,0 +1,19 @@
+(* Self-test fixture for the `lint-string-errors` recipe in the justfile — the
+   only consumer of this file. It is not built: the `.fixture` suffix keeps it
+   out of dune's sight.
+
+   Contract: this file must exit 2 — lexer state desynchronised — because the
+   comment opened on the last line is never closed.
+
+   Exit 2 is the arm that distinguishes this gate from a naive grep. If the
+   lexer runs off the end of a file it has stopped tracking, every line after
+   the desynchronisation point is stripped as comment text, so a real
+   violation below would be silently swallowed and the scan would report a
+   clean tree. That is a fail-open path, and the only thing standing between
+   it and a false green is the end-of-file state check. *)
+
+val of_csv : path:string -> ('freq t, string) result
+
+(* This comment is deliberately left unterminated. Anything after it —
+   including the violation above, once the lexer has lost sync — is invisible
+   to the scan.

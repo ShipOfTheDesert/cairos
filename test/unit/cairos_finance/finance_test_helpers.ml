@@ -31,7 +31,9 @@ let make_series idx values =
   let nx = Nx.create Nx.float64 [| n |] values in
   match Cairos.Series.make idx nx with
   | Ok s -> s
-  | Error msg -> Alcotest.fail (Printf.sprintf "make_series: %s" msg)
+  | Error e ->
+      Alcotest.fail
+        (Printf.sprintf "make_series: %s" (Cairos.Series.err_to_string e))
 
 let make_daily_series values =
   make_series (daily_index_of_length (Array.length values)) values

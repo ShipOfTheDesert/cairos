@@ -6,8 +6,9 @@
    guarded token below sits in a comment, a string literal, or an identifier
    that merely contains it.
 
-   lib/cairos_io/cairos_io.ml:82 documents its own non-emptiness the same way —
-   prose naming the token is the ordinary case, not a hypothetical one.
+   the [parse_rows] doc comment in lib/cairos_io/cairos_io.ml documents its own
+   non-emptiness the same way — prose naming the token is the ordinary case,
+   not a hypothetical one.
 
    (* A nested comment, one level deeper: assert false again. A stripper that
       closes the outer comment at the inner terminator reads the rest of this

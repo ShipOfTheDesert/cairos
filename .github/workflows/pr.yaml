@@ -57,6 +57,24 @@ jobs:
       - name: Engine-assert gate
         run: just lint-asserts
 
+  # Same shape, same reasons, same duplication contract as engine-assert-gate
+  # above: no ocaml-deps (the gate is a text scan over lib/*.mli and needs no
+  # switch), the recipe invoked directly so its four-way fixture self-test
+  # cannot drift out of CI, and a verbatim copy in main.yaml because lint.yaml
+  # does not trigger on a direct push to main. Change the two together.
+  string-error-gate:
+    runs-on: ubuntu-latest
+    if: "!github.event.pull_request.draft"
+
+    steps:
+      - uses: actions/checkout@v6
+      - uses: extractions/setup-just@v3
+        with:
+          just-version: '1.46.0'
+
+      - name: Structured-error gate
+        run: just lint-string-errors
+
   cross-validation:
     runs-on: ubuntu-latest
     if: "!github.event.pull_request.draft"

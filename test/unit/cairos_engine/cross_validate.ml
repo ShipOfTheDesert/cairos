@@ -46,7 +46,7 @@ let die_mismatch fmt =
 let read_frame_fixture path =
   match Cairos_io.frame_of_csv ~freq:Cairos.Freq.Day path with
   | Ok f -> f
-  | Error msg -> die_tooling "%s: %s" path msg
+  | Error e -> die_tooling "%s: %s" path (Cairos_io.err_to_string e)
 
 let read_lines path =
   match In_channel.with_open_text path In_channel.input_all with

@@ -36,7 +36,7 @@ let map_preserves_length =
 
    With [shift n (shift -n s)] the round-trip preserves the
    *trailing* window, not the leading one (verified by tracing the in-library
-   implementation at lib/series.ml:33-47): the trailing
+   implementation of [shift] in lib/series.ml): the trailing
    window has length length - n, avoiding the boundary NaNs shift introduces.
    This implementation slices [R (n, length)] on both sides. *)
 let series_with_shift_arb =
@@ -143,9 +143,11 @@ let ffill_no_nan_after_first_valid =
    escaped exception fails the QCheck test, so the two halves of the claim are
    pinned by the same run.
 
-   Index length 0 is drawn deliberately: at that length an implementation that
-   read a 0-d tensor as "length 0" would return [Ok], so those draws
-   discriminate the guard from the length-mismatch check. The four dtypes span
+   Every draw discriminates the guard from the length-mismatch check, since the
+   assertion names [Zero_dimensional_values] rather than merely [Error]. Index
+   length 0 is still drawn deliberately: at that length an implementation that
+   read a 0-d tensor as "length 0" returns [Ok], which is the coarsest form of
+   the same failure and is worth covering directly. The four dtypes span
    both dtype value representations ([float] and boxed [int32]/[int64]), since
    the shape read the guard protects is dtype-agnostic and a guard written
    against one representation would be caught by the others. *)
@@ -198,19 +200,26 @@ let zero_dim_case_arb =
       Printf.sprintf "<0-d %s values, index len=%d>" (dtype_label values) n)
     gen
 
+let rejected_as_zero_dim = function
+  | Ok _ -> false
+  | Error Cairos.Series.Zero_dimensional_values -> true
+  | Error (Cairos.Series.Length_mismatch _) -> false
+
 let prop_series_make_zero_dim_never_raises =
   QCheck.Test.make ~count:200 ~name:"prop_series_make_zero_dim_never_raises"
     zero_dim_case_arb (fun (n, values) ->
       let index = daily_index_of_length n in
       match values with
       | F64 x ->
-          Result.is_error (Cairos.Series.make index (Nx.scalar Nx.float64 x))
+          rejected_as_zero_dim
+            (Cairos.Series.make index (Nx.scalar Nx.float64 x))
       | F32 x ->
-          Result.is_error (Cairos.Series.make index (Nx.scalar Nx.float32 x))
+          rejected_as_zero_dim
+            (Cairos.Series.make index (Nx.scalar Nx.float32 x))
       | I32 x ->
-          Result.is_error (Cairos.Series.make index (Nx.scalar Nx.int32 x))
+          rejected_as_zero_dim (Cairos.Series.make index (Nx.scalar Nx.int32 x))
       | I64 x ->
-          Result.is_error (Cairos.Series.make index (Nx.scalar Nx.int64 x)))
+          rejected_as_zero_dim (Cairos.Series.make index (Nx.scalar Nx.int64 x)))
 
 let () =
   Qcheck_gen.pin_seed_from_env ();

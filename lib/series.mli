@@ -5,10 +5,28 @@
 
 type ('freq, 'v) t
 
+(** {1 Errors}
+
+    {!make} returns a structured error so callers can pattern-match on the
+    failure mode and recover the offending lengths without scanning error
+    strings. *)
+
+type err =
+  | Length_mismatch of { index_length : int; values_length : int }
+      (** [Index.length index] was [index_length] and [(Nx.shape values).(0)]
+          was [values_length]; the two must be equal. *)
+  | Zero_dimensional_values
+      (** [values] was 0-dimensional, so it has no leading axis to match the
+          index against. *)
+
+val err_to_string : err -> string
+(** Render [err] as a human-readable one-line message. *)
+
 val make :
-  'freq Index.t -> ('v, 'b) Nx.t -> (('freq, ('v, 'b) Nx.t) t, string) result
-(** Construct a series from index and values. Returns [Error msg] if [values] is
-    0-dimensional — it has no leading axis to match the index against — or if
+  'freq Index.t -> ('v, 'b) Nx.t -> (('freq, ('v, 'b) Nx.t) t, err) result
+(** Construct a series from index and values. Returns
+    [Error Zero_dimensional_values] if [values] is 0-dimensional, or
+    [Error (Length_mismatch _)] if
     [Index.length index <> (Nx.shape values).(0)]. The 0-dimensional case is
     checked first, so a 0-d tensor is rejected as such rather than reported as a
     length mismatch. *)

@@ -12,6 +12,31 @@ let freq_name : type a. a Freq.t -> string = function
   | Freq.Week -> "Week"
   | Freq.Month -> "Month"
 
+type err =
+  | Target_not_lower of { source : Freq.any; target : Freq.any }
+  | Unrepresentable_week_start of { timestamp : Ptime.t }
+  | Unrepresentable_bucket_timestamp of {
+      year : int;
+      month : int;
+      day : int;
+      hour : int;
+    }
+
+let name_of_any (Freq.Any f) = freq_name f
+
+let err_to_string = function
+  | Target_not_lower { source; target } ->
+      Printf.sprintf "cannot resample from %s to %s: target must be lower"
+        (name_of_any source) (name_of_any target)
+  | Unrepresentable_week_start { timestamp } ->
+      Format.asprintf "internal: failed to compute Monday for %a"
+        (Ptime.pp_rfc3339 ()) timestamp
+  | Unrepresentable_bucket_timestamp { year; month; day; hour } ->
+      Printf.sprintf
+        "internal: failed to reconstruct boundary for \
+         %04d-%02d-%02dT%02d:00:00Z"
+        year month day hour
+
 (* A bucket key identifies the calendar period a timestamp belongs to.
    Decomposition from Ptime.t is total (Ptime.to_date_time never fails).
    Reconstruction to Ptime.t returns option and is isolated to the output
@@ -31,7 +56,7 @@ let bucket_key_equal a b =
    Returns result because Ptime.sub_span in the Week branch returns option;
    the None is structurally unreachable but propagated rather than unwrapped. *)
 let bucket_key_of_ptime : type a.
-    a Freq.t -> Ptime.t -> (bucket_key, string) result =
+    a Freq.t -> Ptime.t -> (bucket_key, err) result =
  fun freq t ->
   match freq with
   | Freq.Minute ->
@@ -66,10 +91,7 @@ let bucket_key_of_ptime : type a.
       | Some monday ->
           let year, month, day = Ptime.to_date monday in
           Ok { year; month; day; hour = 0 }
-      | None ->
-          Error
-            (Format.asprintf "internal: failed to compute Monday for %a"
-               (Ptime.pp_rfc3339 ()) t))
+      | None -> Error (Unrepresentable_week_start { timestamp = t }))
   | Freq.Month ->
       (* Keyed on the calendar (year, month); the day is pinned to 1 so the
          reconstructed label is the first instant of the calendar month at
@@ -102,13 +124,13 @@ let resample : type src target b.
     agg:[ `First | `Last | `Sum | `Mean | `Min | `Max ] ->
     target Freq.t ->
     (src, (float, b) Nx.t) Series.t ->
-    ((target, (float, Bigarray.float64_elt) Nx.t) Series.t, string) result =
+    ((target, (float, Bigarray.float64_elt) Nx.t) Series.t, err) result =
  fun ~agg target_freq series ->
   let src_freq = Index.freq (Series.index series) in
   if freq_rank target_freq <= freq_rank src_freq then
     Error
-      (Printf.sprintf "cannot resample from %s to %s: target must be lower"
-         (freq_name src_freq) (freq_name target_freq))
+      (Target_not_lower
+         { source = Freq.Any src_freq; target = Freq.Any target_freq })
   else
     let len = Series.length series in
     if len = 0 then
@@ -167,18 +189,23 @@ let resample : type src target b.
           let boundaries = Array.make n_buckets Ptime.epoch in
           let rec convert_keys i = function
             | [] -> Ok ()
-            | key :: rest ->
-                let* t =
-                  ptime_of_bucket_key key
-                  |> Option.to_result
-                       ~none:
-                         (Printf.sprintf
-                            "internal: failed to reconstruct boundary for \
-                             %04d-%02d-%02dT%02d:00:00Z"
-                            key.year key.month key.day key.hour)
-                in
-                boundaries.(i) <- t;
-                convert_keys (i + 1) rest
+            (* A match, not Option.to_result ~none:, because OCaml is strict:
+               the ~none: argument would allocate its record on every bucket,
+               success included. *)
+            | key :: rest -> (
+                match ptime_of_bucket_key key with
+                | Some t ->
+                    boundaries.(i) <- t;
+                    convert_keys (i + 1) rest
+                | None ->
+                    Error
+                      (Unrepresentable_bucket_timestamp
+                         {
+                           year = key.year;
+                           month = key.month;
+                           day = key.day;
+                           hour = key.hour;
+                         }))
           in
           let* () = convert_keys 0 keys in
           let idx = Index.of_ptime_array_unsafe target_freq boundaries in

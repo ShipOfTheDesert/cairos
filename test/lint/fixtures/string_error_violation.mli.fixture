@@ -1,0 +1,19 @@
+(* Self-test fixture for the `lint-string-errors` recipe in the justfile — the
+   only consumer of this file. It is not built: the `.fixture` suffix keeps it
+   out of dune's sight.
+
+   Contract: this file must FAIL the gate (exit 1), because the [of_csv]
+   signature below returns a prose error side. *)
+
+(* An odd number of single quotes above the violation. A stripper that treats
+   ['] as a string delimiter — rather than asking whether it opens a char
+   literal — opens a string at ['freq] that never closes, and strips the
+   violation below as string content. Substituting that stripper was tried:
+   this file reports 2 rather than 1, because the end-of-file state check
+   catches the runaway before the scan can claim anything. Either way the
+   self-test fails, which is the point — but the arm that fires is the
+   desynchronisation one, not a missed violation. Type variables are the
+   ordinary case in these signatures, not a contrived one. *)
+type 'freq t
+
+val of_csv : path:string -> ('freq t, string) result

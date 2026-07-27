@@ -1,4 +1,12 @@
 type ('freq, 'a, 'b) aligned = { index : 'freq Index.t; left : 'a; right : 'b }
+type err = Empty_index of { left_length : int; right_length : int }
+
+let err_to_string = function
+  | Empty_index { left_length; right_length } ->
+      Printf.sprintf
+        "empty intersection: no common timestamps between %d left and %d right \
+         timestamps"
+        left_length right_length
 
 let index t = t.index
 let left t = t.left
@@ -23,7 +31,7 @@ let align_inner left right =
   in
   let ts_rev, li_rev, ri_rev = loop 0 0 [] [] [] in
   match ts_rev with
-  | [] -> Error "empty intersection: no common timestamps"
+  | [] -> Error (Empty_index { left_length = l_len; right_length = r_len })
   | _ ->
       let ts = Array.of_list (List.rev ts_rev) in
       let l_positions = Array.of_list (List.rev li_rev) in

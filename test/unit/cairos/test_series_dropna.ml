@@ -2,7 +2,7 @@ let epoch_2024_01_01_utc = 1_704_067_200.0
 
 (* The two [failwith]s below are unreachable by construction (synthetic UTC
    epoch + length-matched [Nx.t]) and are intentional: a
-   generator must return [Series.t], not [(_, string) result]. Do not "fix"
+   generator must return [Series.t], not a [result]. Do not "fix"
    by propagating [result] — that breaks the QCheck arbitrary contract. *)
 let make_daily_series_from_floats (xs : float array) :
     ([ `Daily ], (float, Bigarray.float64_elt) Nx.t) Cairos.Series.t =
@@ -18,7 +18,7 @@ let make_daily_series_from_floats (xs : float array) :
   let values = Nx.create Nx.float64 [| n |] xs in
   match Cairos.Series.make idx values with
   | Ok s -> s
-  | Error e -> failwith ("generator series: " ^ e)
+  | Error e -> failwith ("generator series: " ^ Cairos.Series.err_to_string e)
 
 (* Prefix-truncation shrinker: shortens the series to length 1, n/2, or n-1.
    For n <= 1 there is nothing meaningful to shrink to. *)
@@ -124,7 +124,7 @@ let make_daily_float32_series_from_floats (xs : float array) :
   let values = Nx.create Nx.float32 [| n |] xs in
   match Cairos.Series.make idx values with
   | Ok s -> s
-  | Error e -> failwith ("generator series: " ^ e)
+  | Error e -> failwith ("generator series: " ^ Cairos.Series.err_to_string e)
 
 (* --- Deterministic Alcotest tests --- *)
 

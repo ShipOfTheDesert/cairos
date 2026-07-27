@@ -1,0 +1,40 @@
+(* Self-test fixture for the `lint-string-errors` recipe in the justfile — the
+   only consumer of this file. It is not built: the `.fixture` suffix keeps it
+   out of dune's sight, for the reason string_error_clean.mli.fixture states.
+
+   Contract: this file must FAIL the gate (exit 1). Every signature below is a
+   violation, and each uses a *qualified* spelling of `result` rather than the
+   bare one. A gate matching only `... ) result` reports this file clean.
+
+   This is not a hypothetical shape. lib/cairos_engine/cairos_engine.mli
+   declares `type 'freq result = private { ... }`, which shadows Stdlib.result
+   for the rest of that signature, so `Backtest.run` cannot spell its return
+   type bare and reads `('freq result, err) Stdlib.result`. Any new fallible
+   engine surface inherits the same constraint. `Result.t` is the other
+   spelling the standard library admits; nothing in the tree uses it today, and
+   it is pinned here so that stays a fact rather than an assumption.
+
+   Kept separate from string_error_violation.mli.fixture rather than folded
+   into it: both exit 1, so a merged fixture would still pass the self-test
+   with the qualified handling removed. Only a file whose violations are
+   exclusively qualified discriminates the two. *)
+
+type err = Bad_input of { at : int }
+
+val of_csv : string -> (int, string) Stdlib.result
+(** Qualified with the module the type actually lives in — the spelling forced
+    on any signature that shadows [result]. *)
+
+val of_json : string -> (int, string) Result.t
+(** The [Result.t] alias for the same type. *)
+
+val wide_qualified :
+  string ->
+  ( (int, err) Stdlib.result list,
+    string )
+  Stdlib.result
+(** The qualified spelling in the shape ocamlformat produces for a wide success
+    side, where no single line carries the whole type. The two behaviours have
+    to compose: the whole-file buffer must see the qualification, not just the
+    single-line case. The nested [Stdlib.result] on the success side is
+    structured and must not itself be counted. *)

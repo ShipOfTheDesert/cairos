@@ -63,7 +63,10 @@ let prices =
     Cairos_io.of_csv ~freq:Freq.Day "data/01_core_tour.csv"
   with
   | Ok s -> s
-  | Error e -> failwith (Printf.sprintf "Price series load failed: %s" e)
+  | Error e ->
+      failwith
+        (Printf.sprintf "Price series load failed: %s"
+           (Cairos_io.err_to_string e))
 
 let () = Cairos_jupyter.pp_series "prices" prices
 
@@ -95,7 +98,9 @@ let () =
 let aligned_stats =
   match Align.align ~strategy:`Inner sma_20 std_20 with
   | Ok a -> a
-  | Error e -> failwith (Printf.sprintf "SMA/Std alignment failed: %s" e)
+  | Error e ->
+      failwith
+        (Printf.sprintf "SMA/Std alignment failed: %s" (Align.err_to_string e))
 
 let upper_band = Align.map2 (fun m s -> m +. (2.0 *. s)) aligned_stats
 let lower_band = Align.map2 (fun m s -> m -. (2.0 *. s)) aligned_stats
@@ -135,7 +140,8 @@ let () =
 let weekly_prices =
   match Resample.resample ~agg:`Last Freq.Week prices with
   | Ok w -> w
-  | Error e -> failwith (Printf.sprintf "Resample failed: %s" e)
+  | Error e ->
+      failwith (Printf.sprintf "Resample failed: %s" (Resample.err_to_string e))
 
 let () = Cairos_jupyter.pp_series ~n:5 "weekly_prices" weekly_prices
 
@@ -160,7 +166,9 @@ let frame =
          ])
   with
   | Ok f -> f
-  | Error e -> failwith (Printf.sprintf "Frame construction failed: %s" e)
+  | Error e ->
+      failwith
+        (Printf.sprintf "Frame construction failed: %s" (Frame.err_to_string e))
 
 let () = Cairos_jupyter.pp_frame frame
 

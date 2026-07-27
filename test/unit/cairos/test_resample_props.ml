@@ -13,11 +13,15 @@
    with a 60s bucket interval (qcheck_gen.ml:127), so the timestamps are
    strictly-increasing finite POSIX seconds well within Ptime range.
    [Resample.resample] returns [Error] only when the target frequency is not
-   strictly lower than the source (lib/resample.ml:98) or when an internal
+   strictly lower than the source ([freq_rank] guard, lib/resample.ml) or when
+   an internal
    Ptime.sub_span / Ptime.of_date_time call fails (structurally unreachable
    for Day target on a synthetic 2024-era minute series). The [Error] branch
-   is therefore unreachable; it is terminated with [failwith] so QCheck does not
-   mis-shrink a generator-internal failure into a phantom library bug. *)
+   is therefore unreachable; it is terminated with [failwith] rather than
+   [false] because reaching it means a library invariant broke, which a
+   property failure would misreport as a contract violation. [failwith] does
+   not suppress shrinking — QCheck shrinks raised exceptions too. See
+   ocaml/qcheck-generator-failwith.md. *)
 let downsample_never_grows_length =
   QCheck.Test.make ~count:200 ~name:"downsample_never_grows_length"
     Qcheck_gen.minute_finite_float_series_arb (fun s ->
@@ -33,14 +37,15 @@ let downsample_never_grows_length =
 (* Every output timestamp from an hourly -> daily downsample
    sits exactly at calendar midnight UTC. Bucket boundaries are reconstructed
    from the (year, month, day) triple with hour/min/sec zeroed
-   (lib/resample.ml:43-45, 77-78), so a regression that emits the
+   ([bucket_key_of_ptime], lib/resample.ml), so a regression that emits the
    first-element-of-bucket timestamp instead of the calendar midnight would
    surface here.
 
    [hourly_finite_float_series_arb] starts at the 2024-01-01T00:00:00Z epoch
    with a 3_600s bucket interval (qcheck_gen.ml:139). The Day target
-   exercises only two Ptime entry points — [Ptime.to_date] (lib/resample.ml:44,
-   total on any valid Ptime.t) and [Ptime.of_date_time] (lib/resample.ml:78,
+   exercises only two Ptime entry points — [Ptime.to_date] (called from
+   [bucket_key_of_ptime], total on any valid Ptime.t) and [Ptime.of_date_time]
+   (called from [ptime_of_bucket_key], lib/resample.ml;
    returns option but always Some when the input came from [Ptime.to_date] of
    a valid Ptime.t with a zero time-of-day, as is the case here). The Hour /
    Week branches' [Ptime.weekday] / [Ptime.sub_span] calls are unreachable at
@@ -69,7 +74,7 @@ let downsample_timestamps_calendar_aligned =
    [~count:200] property asserting Daily -> Minute resampling is rejected with
    [Error]. It was demoted to a deterministic Alcotest case
    [rejects_upsampling_daily_to_minute] in test_resample.ml — the contract
-   is one branch of the rank guard at lib/resample.ml:98 and does not
+   is one branch of the [freq_rank] guard (lib/resample.ml) and does not
    depend on input shape, so a [~count:200] declaration would have promised
    random coverage the contract neither needs nor benefits from. That
    rejection case therefore lives next to its peer rejection cases in
@@ -97,9 +102,10 @@ let downsample_timestamps_calendar_aligned =
    [Error] only when the target rank is not strictly above the source
    (Day < Month always) or on an internal Ptime failure (structurally
    unreachable for a Month target on synthetic 2024/2025-era daily bars). The
-   [Error] branch is therefore unreachable and terminated with [failwith] so
-   QCheck does not mis-shrink a generator-internal failure into a phantom
-   library bug. *)
+   [Error] branch is therefore unreachable and terminated with [failwith] for
+   the same reason as the length property above: it means a library invariant
+   broke, not that the contract was violated. Shrinking still happens either
+   way. *)
 let monthly_resample_bucket_count_and_labels =
   QCheck.Test.make ~count:200 ~name:"monthly_resample_bucket_count_and_labels"
     Qcheck_gen.daily_multi_month_series_arb (fun s ->
@@ -144,6 +150,119 @@ let monthly_resample_bucket_count_and_labels =
           && all_month_starts
           && strictly_monotonic)
 
+(* [resample] rejects exactly when the target frequency is not strictly lower
+   than the source, over every one of the 25 ordered frequency pairs.
+
+   The pair set is walked exhaustively inside the property rather than sampled
+   by the generator: 25 pairs against [~count:200] draws leaves a real chance
+   (~0.7%) that some pair is never exercised on a given run, and "holds for
+   every pair" is precisely the claim. What the generator varies is the source
+   series' length — the one input dimension the classification must be
+   insensitive to. Values are drawn finite but nothing here depends on them.
+
+   Length 0 is inside the generator's range but is not pinned here: at 1-in-65
+   per draw it is missed on roughly 1 run in 22, so the empty-input case has its
+   own deterministic case, [rejects_upsampling_on_empty_series] in
+   test_resample.ml, rather than resting on a draw that usually arrives.
+
+   [rank_of] is re-derived from the documented total order (Minute < Hour < Day
+   < Week < Month, resample.mli) rather than imported from [lib/resample.ml], so
+   the property checks the implementation against the contract and not against
+   itself.
+
+   The two [Unrepresentable_*] variants are structurally unreachable for these
+   synthetic 2020/2024-era inputs; those arms terminate with [failwith] rather
+   than returning [false], because a property failure would report a broken
+   library invariant as a contract violation — the wrong diagnosis on the one
+   path whose purpose is post-mortem debuggability. Note that these arms match
+   on [resample]'s own return value, not on generator output: reaching one is a
+   library regression, not generator noise. QCheck shrinks a raised exception
+   exactly as it shrinks a [false] return (QCheck2.ml:1932 — "test raised [e]
+   on [input]; try to shrink then fail"; only [Failed_precondition] and
+   [No_example_found] are exempt), so [failwith] buys no shrink suppression and
+   is not chosen for any. See ocaml/qcheck-generator-failwith.md. *)
+let all_frequencies =
+  [
+    Cairos.Freq.Any Cairos.Freq.Minute;
+    Cairos.Freq.Any Cairos.Freq.Hour;
+    Cairos.Freq.Any Cairos.Freq.Day;
+    Cairos.Freq.Any Cairos.Freq.Week;
+    Cairos.Freq.Any Cairos.Freq.Month;
+  ]
+
+let rank_of (Cairos.Freq.Any f) =
+  match f with
+  | Cairos.Freq.Minute -> 0
+  | Cairos.Freq.Hour -> 1
+  | Cairos.Freq.Day -> 2
+  | Cairos.Freq.Week -> 3
+  | Cairos.Freq.Month -> 4
+
+(* Shared, unlike [rank_of] above: this one only labels failure messages, so it
+   has no contract to encode independently. *)
+let name_of = Test_helpers.name_of_any
+
+(* [true] when [resample]'s classification of this pair matches the contract:
+   [Error (Target_not_lower _)] exactly when the target rank does not exceed the
+   source rank, [Ok] otherwise. *)
+let classified_per_contract xs source target =
+  let must_reject = rank_of target <= rank_of source in
+  match (source, target) with
+  | Cairos.Freq.Any src, Cairos.Freq.Any tgt -> (
+      let s = Qcheck_gen.make_series_from_floats ~freq:src xs in
+      match Cairos.Resample.resample ~agg:`Last tgt s with
+      | Error (Cairos.Resample.Target_not_lower _) -> must_reject
+      | Ok _ -> not must_reject
+      | Error (Cairos.Resample.Unrepresentable_week_start _)
+      | Error (Cairos.Resample.Unrepresentable_bucket_timestamp _) ->
+          failwith
+            "unreachable: synthetic epoch-anchored series produce no Ptime \
+             boundary failures")
+
+(* Prefix truncation, matching [qcheck_gen.shrink_daily_series]. Length is the
+   only structural parameter the property depends on — the values are never
+   inspected, only carried through [resample] — so shrinking length alone
+   minimises a counterexample fully. Without a shrinker the report names
+   whatever length was drawn, which for a 0-64 range is usually not the
+   boundary that matters. *)
+let shrink_float_array xs =
+  let n = Array.length xs in
+  let open QCheck.Iter in
+  if n <= 1 then empty
+  else
+    let candidates =
+      List.sort_uniq compare [ 0; 1; n / 2; n - 1 ]
+      |> List.filter (fun k -> k >= 0 && k < n)
+    in
+    of_list candidates >|= fun k -> Array.sub xs 0 k
+
+let float_array_arb =
+  let open QCheck in
+  make ~shrink:shrink_float_array
+    ~print:(fun xs -> Printf.sprintf "<float array len=%d>" (Array.length xs))
+    (Gen.array_size (Gen.int_range 0 64) (Gen.float_range (-1e6) 1e6))
+
+let resample_rejects_iff_target_not_lower =
+  QCheck.Test.make ~count:200 ~name:"resample_rejects_iff_target_not_lower"
+    float_array_arb (fun xs ->
+      let misclassified =
+        all_frequencies
+        |> List.concat_map (fun source ->
+            all_frequencies |> List.map (fun target -> (source, target)))
+        |> List.filter (fun (source, target) ->
+            not (classified_per_contract xs source target))
+      in
+      match misclassified with
+      | [] -> true
+      | pairs ->
+          QCheck.Test.fail_reportf
+            "length %d: %d of 25 frequency pairs misclassified: %s"
+            (Array.length xs) (List.length pairs)
+            (pairs
+            |> List.map (fun (source, target) ->
+                Printf.sprintf "%s -> %s" (name_of source) (name_of target))
+            |> String.concat ", "))
+
 let () =
   Qcheck_gen.pin_seed_from_env ();
   let tests =
@@ -152,6 +271,7 @@ let () =
         downsample_never_grows_length;
         downsample_timestamps_calendar_aligned;
         monthly_resample_bucket_count_and_labels;
+        resample_rejects_iff_target_not_lower;
       ]
   in
   Alcotest.run "Resample.props" [ ("property", tests) ]

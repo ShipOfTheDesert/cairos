@@ -104,7 +104,7 @@ let parked : parked_scenario list = []
 let read_frame_fixture path =
   match Cairos_io.frame_of_csv ~freq:Cairos.Freq.Day path with
   | Ok f -> f
-  | Error msg -> die_tooling "%s: %s" path msg
+  | Error e -> die_tooling "%s: %s" path (Cairos_io.err_to_string e)
 
 let split_header_and_rows ~expected path =
   match read_lines path with
