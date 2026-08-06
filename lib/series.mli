@@ -55,6 +55,36 @@ val values : ('freq, 'v) t -> 'v
 val length : ('freq, 'v) t -> int
 (** Number of elements in the series. *)
 
+(** {1 Scalar access}
+
+    Total, constant-time accessors on float series. Both return [None] rather
+    than raising, and both hand back a [float] by value, so no route through
+    them can write into the tensor {!values} returns by reference. *)
+
+val at : int -> ('freq, (float, 'b) Nx.t) t -> float option
+(** [at i s] is [Some v] where [v] is the value at position [i], or [None] when
+    [i] is outside [\[0, length s)] — including any negative [i]. Total.
+
+    [None] also when [s]'s values tensor has rank other than 1. {!make} matches
+    the index against the leading axis alone, so it accepts a tensor of any rank
+    [>= 1]; a single position does not name a cell of one whose rank is higher,
+    and reporting that is what keeps [at] total across everything {!make}
+    admits.
+
+    [at] deliberately diverges from {!slice}, {!head} and {!tail}, which clamp
+    an out-of-range bound: there is no nearest in-range element to fall back to
+    for a single position, so the out-of-range case is reported rather than
+    silently redirected.
+
+    [at] is positional and NaN-blind: a [Float.nan] element is [Some Float.nan],
+    not [None]. Contrast with {!first_valid}, which skips NaN and returns a
+    position alongside the value. *)
+
+val last : ('freq, (float, 'b) Nx.t) t -> float option
+(** [last s] is the final element. A trailing [Float.nan] is [Some Float.nan].
+    Exactly [at (length s - 1) s], so it is [None] on an empty [s] and on the
+    higher-rank values tensor {!at} describes, and on nothing else. *)
+
 (** {1 Slicing} *)
 
 val slice :
@@ -95,7 +125,10 @@ val pct_change : ('freq, (float, 'b) Nx.t) t -> ('freq, (float, 'b) Nx.t) t
 
 val first_valid : ('freq, (float, 'b) Nx.t) t -> (int * float) option
 (** [first_valid s] returns [Some (i, v)] where [i] is the position of the first
-    non-NaN value [v], or [None] if the series is empty or all NaN. *)
+    non-NaN value [v], or [None] if the series is empty or all NaN.
+
+    Contrast with {!at}, which is positional and NaN-blind: it takes the
+    position as input and returns [Some Float.nan] where this skips. *)
 
 val ffill : ('freq, (float, 'b) Nx.t) t -> ('freq, (float, 'b) Nx.t) t
 (** [ffill s] replaces each [Float.nan] with the most recent preceding non-NaN

@@ -221,6 +221,67 @@ let prop_series_make_zero_dim_never_raises =
       | I64 x ->
           rejected_as_zero_dim (Cairos.Series.make index (Nx.scalar Nx.int64 x)))
 
+(* [Series.at] agrees bitwise with the values tensor at every in-range position,
+   is [None] at every out-of-range one, and reading through it leaves the tensor
+   untouched.
+
+   The sweep runs [-length - 2 .. length + 2] exhaustively per draw rather than
+   drawing one index, so each draw covers the three regions that behave
+   differently underneath the accessor: in range; the wrap region [[-length,
+   -1]], where the underlying [Nx.item] reads a real element Python-style and an
+   unguarded [at] is a silent wrong answer; and below [-length], where it raises.
+   The deterministic cases in test_series.ml pin those boundaries at one length;
+   what random input adds is that the guard tracks the length rather than
+   happening to agree with it, over values drawn from the full IEEE range
+   including NaN. The sweep is read ascending, so an accessor with no lower
+   bound at all is reported as the raise from below [-length] rather than as a
+   wrap-region disagreement; the wrap region is what surfaces once the guard
+   rejects the raising range but not the wrapping one.
+
+   The empty-disagreement pass is not vacuous: the in-range arm demands [Some],
+   so an accessor answering [None] everywhere is reported rather than silently
+   satisfying an assertion of absence.
+
+   Comparison is bitwise, not [=]: a NaN element must be reported as the same
+   NaN rather than passing or failing on IEEE inequality, which is the whole
+   content of the accessor being NaN-blind.
+
+   The tensor-unchanged check runs *before* the value comparison, and both run
+   against the same pre-read snapshot. [Series.values] hands back the underlying
+   tensor by reference, so an accessor that wrote through it is the failure this
+   half exists to catch; reported second it would be dead for any write the
+   sweep reads back afterwards, described as a wrong value rather than as a
+   mutation. *)
+let series_at_agrees_with_values =
+  QCheck.Test.make ~count:200 ~name:"series_at_agrees_with_values"
+    Qcheck_gen.daily_float_series_arb (fun s ->
+      let len = Cairos.Series.length s in
+      let before = Nx.to_array (Cairos.Series.values s) in
+      let sweep = List.init ((2 * len) + 5) (fun k -> k - len - 2) in
+      let observed = List.map (fun i -> (i, Cairos.Series.at i s)) sweep in
+      let after = Nx.to_array (Cairos.Series.values s) in
+      let disagreement (i, got) =
+        match (got, i >= 0 && i < len) with
+        | Some v, true ->
+            if Qcheck_gen.float_arrays_bitwise_equal [| v |] [| before.(i) |]
+            then None
+            else
+              Some (Printf.sprintf "at %d = %h, tensor holds %h" i v before.(i))
+        | Some v, false -> Some (Printf.sprintf "at %d = %h, expected None" i v)
+        | None, true ->
+            Some (Printf.sprintf "at %d = None, expected %h" i before.(i))
+        | None, false -> None
+      in
+      if not (Qcheck_gen.float_arrays_bitwise_equal after before) then
+        QCheck.Test.fail_reportf
+          "length %d: reading through [at] changed the values tensor" len
+      else
+        match List.filter_map disagreement observed with
+        | [] -> true
+        | ds ->
+            QCheck.Test.fail_reportf "length %d: %d position(s) wrong: %s" len
+              (List.length ds) (String.concat "; " ds))
+
 let () =
   Qcheck_gen.pin_seed_from_env ();
   let tests =
@@ -231,6 +292,7 @@ let () =
         shift_round_trip_overlap_is_identity;
         slice_clamped_length_formula;
         ffill_no_nan_after_first_valid;
+        series_at_agrees_with_values;
         prop_series_make_zero_dim_never_raises;
       ]
   in

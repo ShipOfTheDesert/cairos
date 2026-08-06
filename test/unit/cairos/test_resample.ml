@@ -207,6 +207,73 @@ let agg_max () =
       let vs = Nx.to_array (Cairos.Series.values result) in
       Alcotest.(check (float 0.001)) "max" 50.0 vs.(0)
 
+(* --- Count aggregation --- *)
+
+let resample_count_no_nan () =
+  let s =
+    Test_helpers.make_daily_series
+      [| "2024-01-01"; "2024-01-02"; "2024-01-03"; "2024-01-04"; "2024-01-05" |]
+      [| 10.0; 20.0; 30.0; 40.0; 50.0 |]
+  in
+  match Cairos.Resample.resample ~agg:`Count Cairos.Freq.Week s with
+  | Error e -> Alcotest.fail (Cairos.Resample.err_to_string e)
+  | Ok result ->
+      Alcotest.(check int) "1 weekly point" 1 (Cairos.Series.length result);
+      let vs = Nx.to_array (Cairos.Series.values result) in
+      Alcotest.(check (float 0.001)) "count" 5.0 vs.(0)
+
+let resample_count_excludes_nan () =
+  let s =
+    Test_helpers.make_daily_series
+      [| "2024-01-01"; "2024-01-02"; "2024-01-03"; "2024-01-04"; "2024-01-05" |]
+      [| 10.0; Float.nan; 30.0; Float.nan; 50.0 |]
+  in
+  match Cairos.Resample.resample ~agg:`Count Cairos.Freq.Week s with
+  | Error e -> Alcotest.fail (Cairos.Resample.err_to_string e)
+  | Ok result ->
+      Alcotest.(check int) "1 weekly point" 1 (Cairos.Series.length result);
+      let vs = Nx.to_array (Cairos.Series.values result) in
+      Alcotest.(check (float 0.001)) "count excludes the two NaN" 3.0 vs.(0)
+
+let resample_count_all_nan_bucket_is_zero () =
+  (* Week 1 is entirely NaN. It is non-empty, so it is not omitted the way an
+     empty bucket is — it emits 0.0, which is the only route to that value. *)
+  let s =
+    Test_helpers.make_daily_series
+      [|
+        "2024-01-01";
+        "2024-01-02";
+        "2024-01-03";
+        "2024-01-08";
+        "2024-01-09";
+        "2024-01-10";
+      |]
+      [| Float.nan; Float.nan; Float.nan; 1.0; 2.0; 3.0 |]
+  in
+  match Cairos.Resample.resample ~agg:`Count Cairos.Freq.Week s with
+  | Error e -> Alcotest.fail (Cairos.Resample.err_to_string e)
+  | Ok result ->
+      Alcotest.(check int) "2 weekly points" 2 (Cairos.Series.length result);
+      let vs = Nx.to_array (Cairos.Series.values result) in
+      Alcotest.(check bool)
+        "all-NaN bucket is not NaN" false
+        (Float.is_nan vs.(0));
+      Alcotest.(check (float 0.001)) "all-NaN bucket" 0.0 vs.(0);
+      Alcotest.(check (float 0.001)) "populated bucket" 3.0 vs.(1)
+
+let resample_count_treats_infinities_as_observations () =
+  let s =
+    Test_helpers.make_daily_series
+      [| "2024-01-01"; "2024-01-02"; "2024-01-03"; "2024-01-04"; "2024-01-05" |]
+      [| Float.infinity; Float.neg_infinity; 30.0; Float.nan; 50.0 |]
+  in
+  match Cairos.Resample.resample ~agg:`Count Cairos.Freq.Week s with
+  | Error e -> Alcotest.fail (Cairos.Resample.err_to_string e)
+  | Ok result ->
+      let vs = Nx.to_array (Cairos.Series.values result) in
+      Alcotest.(check (float 0.001))
+        "both infinities count, the NaN does not" 4.0 vs.(0)
+
 (* --- Error cases --- *)
 
 (* Every rejection below asserts the variant rather than [Error _]: message
@@ -580,6 +647,14 @@ let tests =
     ("agg_mean", `Quick, agg_mean);
     ("agg_min", `Quick, agg_min);
     ("agg_max", `Quick, agg_max);
+    ("resample_count_no_nan", `Quick, resample_count_no_nan);
+    ("resample_count_excludes_nan", `Quick, resample_count_excludes_nan);
+    ( "resample_count_all_nan_bucket_is_zero",
+      `Quick,
+      resample_count_all_nan_bucket_is_zero );
+    ( "resample_count_treats_infinities_as_observations",
+      `Quick,
+      resample_count_treats_infinities_as_observations );
     ("rejects_upsampling", `Quick, rejects_upsampling);
     ("rejects_same_frequency", `Quick, rejects_same_frequency);
     ( "rejects_upsampling_daily_to_minute",

@@ -1,9 +1,16 @@
 (* Run with: opam exec -- dune exec bench/bench_resample.exe
 
-   Benchmark: Cairos.Resample.resample daily->weekly and daily->monthly, both
-   with [~agg:`Last] on a ~2_500-bar (10-year) daily float64 series. The two
-   cells share one input and differ only in the target frequency, isolating the
+   Benchmark: Cairos.Resample.resample on a ~2_500-bar (10-year) daily float64
+   series. The first two cells run [~agg:`Last] to weekly and to monthly: they
+   share one input and differ only in the target frequency, isolating the
    calendar-bucketing cost of weekly vs monthly.
+
+   The third runs [~agg:`Count] to monthly, against the second. [`Last] reads
+   one element per bucket and [`Sum] is a single vectorised [Nx] reduction,
+   while [`Count] walks the bucket element by element from OCaml — so it is the
+   one aggregation whose cost is not bounded by an existing cell, and pairing
+   it with an identical [`Last] run is what makes the difference readable as
+   the aggregation rather than the bucketing.
 
    Prerequisite: this file is only built when cairos's :with-test deps are
    installed (bechamel + bechamel-notty). Run
@@ -24,8 +31,9 @@ let make_input () =
    [Resample.resample]. The same ~2_500-bar input is shared across both cells
    and reused across iterations; [resample] does not mutate its input. The
    group name "resample" is prefixed onto each cell by [make_grouped], so the
-   emitted names remain [resample/daily-to-weekly/2500] and
-   [resample/daily-to-monthly/2500]. *)
+   emitted names remain [resample/daily-to-weekly/2500],
+   [resample/daily-to-monthly/2500] and
+   [resample/daily-to-monthly-count/2500]. *)
 let test_resample =
   let s = make_input () in
   Test.make_grouped ~name:"resample"
@@ -38,6 +46,11 @@ let test_resample =
       Test.make ~name:"daily-to-monthly/2500"
         (Staged.stage (fun () ->
              match Cairos.Resample.resample ~agg:`Last Cairos.Freq.Month s with
+             | Ok _ -> ()
+             | Error _ -> failwith "bench input violates resample contract"));
+      Test.make ~name:"daily-to-monthly-count/2500"
+        (Staged.stage (fun () ->
+             match Cairos.Resample.resample ~agg:`Count Cairos.Freq.Month s with
              | Ok _ -> ()
              | Error _ -> failwith "bench input violates resample contract"));
     ]

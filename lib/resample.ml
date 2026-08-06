@@ -117,11 +117,23 @@ let aggregate agg slice =
   | `Mean -> Nx.mean slice |> Nx.item []
   | `Min -> Nx.min slice |> Nx.item []
   | `Max -> Nx.max slice |> Nx.item []
+  (* Counted element-wise rather than through a tensor reduction: the count is
+     a cardinality, not arithmetic on the values, so there is no Nx reduction
+     that yields it without first materialising an intermediate. Float.is_nan
+     is the same predicate Series.dropna and Frame.describe count on, so
+     infinities are observations under all three. *)
+  | `Count ->
+      let n = Nx.numel slice in
+      let count = ref 0 in
+      for i = 0 to n - 1 do
+        if not (Float.is_nan (Nx.item [ i ] slice)) then incr count
+      done;
+      Float.of_int !count
 
 let ( let* ) = Result.bind
 
 let resample : type src target b.
-    agg:[ `First | `Last | `Sum | `Mean | `Min | `Max ] ->
+    agg:[ `First | `Last | `Sum | `Mean | `Min | `Max | `Count ] ->
     target Freq.t ->
     (src, (float, b) Nx.t) Series.t ->
     ((target, (float, Bigarray.float64_elt) Nx.t) Series.t, err) result =

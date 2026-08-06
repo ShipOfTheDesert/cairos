@@ -361,6 +361,8 @@ handle.
 - `Cairos.Align.align` — may produce an empty index.
 - `Cairos.Resample.resample` — target frequency must be lower than source.
 - `Cairos.Frame.of_series` — duplicate column names and index mismatch.
+- `Cairos.Frame.add_column` — the same two conditions, checked against the
+  frame the column is added to. No new variant: it reuses `of_series`'s.
 - `Cairos_engine.Backtest.run` — entrypoint validation of caller-supplied
   frames and rebalance calendar.
 - The entire `cairos_io` public surface — CSV parsing is a runtime boundary.

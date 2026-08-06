@@ -1,5 +1,18 @@
 let dates_3 = [| "2024-01-01"; "2024-01-02"; "2024-01-03" |]
 
+(* Reads every column of [frame] as a plain float list, in [columns] order.
+   Cases that check names and values together go through this: a correct name
+   list paired with values that moved is the failure a names-only assertion
+   cannot see. Defined here rather than beside its first use so every case in
+   the file can reach it. *)
+let frame_cells frame =
+  List.map
+    (fun name ->
+      Array.to_list
+        (Nx.to_array
+           (Cairos.Series.values (Test_helpers.frame_get_exn name frame))))
+    (Cairos.Nonempty.to_list (Cairos.Frame.columns frame))
+
 (* --- Construction (happy path) --- *)
 
 let of_series_single_column () =
@@ -191,12 +204,7 @@ let frame_columns_nonempty_roundtrip () =
       Alcotest.(check (list (list (float 0.001))))
         "every listed name retrieves its constructing values"
         [ [ 1.0; 2.0; 3.0 ]; [ 4.0; 5.0; 6.0 ]; [ 7.0; 8.0; 9.0 ] ]
-        (List.map
-           (fun name ->
-             Array.to_list
-               (Nx.to_array
-                  (Cairos.Series.values (Test_helpers.frame_get_exn name frame))))
-           (Cairos.Nonempty.to_list cols))
+        (frame_cells frame)
 
 (* --- Shared index and total decomposition --- *)
 
@@ -287,21 +295,11 @@ let frame_mapi_cells_preserves_shape_and_index () =
           [ 4102.0; 5112.0; 6122.0 ];
           [ 7203.0; 8213.0; 9223.0 ];
         ]
-        (List.map
-           (fun name ->
-             Array.to_list
-               (Nx.to_array
-                  (Cairos.Series.values (Test_helpers.frame_get_exn name out))))
-           (Cairos.Nonempty.to_list (Cairos.Frame.columns out)));
+        (frame_cells out);
       Alcotest.(check (list (list (float 0.001))))
         "input frame is unchanged"
         [ [ 1.0; 2.0; 3.0 ]; [ 4.0; 5.0; 6.0 ]; [ 7.0; 8.0; 9.0 ] ]
-        (List.map
-           (fun name ->
-             Array.to_list
-               (Nx.to_array
-                  (Cairos.Series.values (Test_helpers.frame_get_exn name frame))))
-           (Cairos.Nonempty.to_list (Cairos.Frame.columns frame)))
+        (frame_cells frame)
 
 (* Physical equality, not structural. [frame.mli] states that [index] returns
    "the index shared by every column" and that [mapi_cells] returns "the same
@@ -338,14 +336,7 @@ let frame_index_is_physically_shared () =
 let frame_mapi_cells_edge_shapes () =
   let a = Test_helpers.make_daily_series dates_3 [| 1.0; 2.0; 3.0 |] in
   let b = Test_helpers.make_daily_series dates_3 [| 4.0; 5.0; 6.0 |] in
-  let cells frame =
-    List.map
-      (fun name ->
-        Array.to_list
-          (Nx.to_array
-             (Cairos.Series.values (Test_helpers.frame_get_exn name frame))))
-      (Cairos.Nonempty.to_list (Cairos.Frame.columns frame))
-  in
+  let cells = frame_cells in
   let double ~col:_ ~name:_ ~row:_ v = v *. 2.0 in
   (match Cairos.Frame.of_series (Cairos.Nonempty.make ("a", a) []) with
   | Error e -> Alcotest.fail (Cairos.Frame.err_to_string e)
@@ -396,6 +387,284 @@ let frame_duplicate_column_variant () =
       Alcotest.fail "expected Duplicate_column, got Index_mismatch"
   | Error (Cairos.Frame.Duplicate_column { name }) ->
       Alcotest.(check string) "name" "price" name
+
+(* --- add_column --- *)
+
+(* Ordering is the whole claim, so the expected list is enumerated in full
+   rather than checked for membership — a prepend, or a rebuild that reorders,
+   is visible only against the whole list. The added name sorts first
+   alphabetically while landing last positionally, so an implementation that
+   sorted rather than appended would also be caught here. *)
+let frame_add_column_appends_last () =
+  let z = Test_helpers.make_daily_series dates_3 [| 1.0; 2.0; 3.0 |] in
+  let m = Test_helpers.make_daily_series dates_3 [| 4.0; 5.0; 6.0 |] in
+  let a = Test_helpers.make_daily_series dates_3 [| 7.0; 8.0; 9.0 |] in
+  match Cairos.Frame.of_series (Cairos.Nonempty.make ("z", z) [ ("m", m) ]) with
+  | Error e -> Alcotest.fail (Cairos.Frame.err_to_string e)
+  | Ok frame -> (
+      match Cairos.Frame.add_column "a" a frame with
+      | Error e -> Alcotest.fail (Cairos.Frame.err_to_string e)
+      | Ok out ->
+          Alcotest.(check (list string))
+            "appended in last position" [ "z"; "m"; "a" ]
+            (Cairos.Nonempty.to_list (Cairos.Frame.columns out));
+          Alcotest.(check (list (list (float 0.001))))
+            "values follow their names"
+            [ [ 1.0; 2.0; 3.0 ]; [ 4.0; 5.0; 6.0 ]; [ 7.0; 8.0; 9.0 ] ]
+            (frame_cells out))
+
+(* The duplicated name is deliberately not the frame's head: a fixture whose
+   first column is the repeated one passes against an implementation that
+   reports the head name regardless of which name repeated.
+
+   The first arm adds a fresh name to the same frame and is the affirmative
+   arm the rejection needs — without it an [add_column] returning
+   [Duplicate_column] for every input would pass this case.
+
+   The third arm pins the check order the signature states: a column that is
+   both a repeat and index-incompatible reports the repeat. Nothing else in
+   the suite can see that ordering, since every other input trips at most one
+   of the two checks. *)
+let frame_add_column_duplicate_name () =
+  let z = Test_helpers.make_daily_series dates_3 [| 1.0; 2.0; 3.0 |] in
+  let m = Test_helpers.make_daily_series dates_3 [| 4.0; 5.0; 6.0 |] in
+  let extra = Test_helpers.make_daily_series dates_3 [| 7.0; 8.0; 9.0 |] in
+  let short =
+    Test_helpers.make_daily_series
+      [| "2024-01-01"; "2024-01-02" |]
+      [| 10.0; 20.0 |]
+  in
+  match Cairos.Frame.of_series (Cairos.Nonempty.make ("z", z) [ ("m", m) ]) with
+  | Error e -> Alcotest.fail (Cairos.Frame.err_to_string e)
+  | Ok frame -> (
+      (match Cairos.Frame.add_column "fresh" extra frame with
+      | Error e ->
+          Alcotest.fail ("fresh name rejected: " ^ Cairos.Frame.err_to_string e)
+      | Ok out ->
+          Alcotest.(check (list string))
+            "a fresh name on this frame is accepted" [ "z"; "m"; "fresh" ]
+            (Cairos.Nonempty.to_list (Cairos.Frame.columns out)));
+      (match Cairos.Frame.add_column "m" short frame with
+      | Ok _ ->
+          Alcotest.fail "expected Error for a repeated, index-incompatible name"
+      | Error (Cairos.Frame.Index_mismatch _) ->
+          Alcotest.fail
+            "expected the duplicate name to be reported ahead of the index"
+      | Error (Cairos.Frame.Duplicate_column { name }) ->
+          Alcotest.(check string) "duplicate is checked first" "m" name);
+      (match Cairos.Frame.add_column "m" extra frame with
+      | Ok _ -> Alcotest.fail "expected Error for duplicate column name"
+      | Error (Cairos.Frame.Index_mismatch _) ->
+          Alcotest.fail "expected Duplicate_column, got Index_mismatch"
+      | Error (Cairos.Frame.Duplicate_column { name }) ->
+          Alcotest.(check string) "name" "m" name);
+      (* The head name, which the arms above deliberately avoid. A membership
+         test over the whole column list answers both the same way; one that
+         reached only the tail would accept this and produce a frame carrying
+         "z" twice, which no later operation could undo. *)
+      match Cairos.Frame.add_column "z" extra frame with
+      | Ok _ -> Alcotest.fail "expected Error for a repeated head column name"
+      | Error (Cairos.Frame.Index_mismatch _) ->
+          Alcotest.fail "expected Duplicate_column, got Index_mismatch"
+      | Error (Cairos.Frame.Duplicate_column { name }) ->
+          Alcotest.(check string) "head name" "z" name)
+
+(* Lengths are asymmetric (3 against 2) so a swapped pair of payload fields is
+   visible. The first arm adds a column whose index matches, which is the
+   affirmative arm: it rules out an [add_column] that rejects every column on
+   index grounds.
+
+   The last arm is the equal-length route the signature documents — same length,
+   different timestamps. It is the branch worth pinning: an [add_column] that
+   compared lengths instead of timestamps passes every other arm here, and the
+   payload it produces is the one [err_to_string] carries a comment about, with
+   [expected_length] and [found_length] equal. *)
+let frame_add_column_index_mismatch () =
+  let z = Test_helpers.make_daily_series dates_3 [| 1.0; 2.0; 3.0 |] in
+  let m = Test_helpers.make_daily_series dates_3 [| 4.0; 5.0; 6.0 |] in
+  let matching = Test_helpers.make_daily_series dates_3 [| 7.0; 8.0; 9.0 |] in
+  let short =
+    Test_helpers.make_daily_series
+      [| "2024-01-01"; "2024-01-02" |]
+      [| 10.0; 20.0 |]
+  in
+  let shifted =
+    Test_helpers.make_daily_series
+      [| "2024-01-02"; "2024-01-03"; "2024-01-04" |]
+      [| 10.0; 20.0; 30.0 |]
+  in
+  match Cairos.Frame.of_series (Cairos.Nonempty.make ("z", z) [ ("m", m) ]) with
+  | Error e -> Alcotest.fail (Cairos.Frame.err_to_string e)
+  | Ok frame -> (
+      (match Cairos.Frame.add_column "matching" matching frame with
+      | Error e ->
+          Alcotest.fail
+            ("matching index rejected: " ^ Cairos.Frame.err_to_string e)
+      | Ok out ->
+          Alcotest.(check (list string))
+            "a matching index on this frame is accepted"
+            [ "z"; "m"; "matching" ]
+            (Cairos.Nonempty.to_list (Cairos.Frame.columns out)));
+      (match Cairos.Frame.add_column "short" short frame with
+      | Ok _ -> Alcotest.fail "expected Error for index length mismatch"
+      | Error (Cairos.Frame.Duplicate_column _) ->
+          Alcotest.fail "expected Index_mismatch, got Duplicate_column"
+      | Error
+          (Cairos.Frame.Index_mismatch { column; expected_length; found_length })
+        ->
+          Alcotest.(check string) "column" "short" column;
+          Alcotest.(check int) "expected_length" 3 expected_length;
+          Alcotest.(check int) "found_length" 2 found_length);
+      match Cairos.Frame.add_column "shifted" shifted frame with
+      | Ok _ ->
+          Alcotest.fail
+            "expected Error for an equal-length index with different timestamps"
+      | Error (Cairos.Frame.Duplicate_column _) ->
+          Alcotest.fail "expected Index_mismatch, got Duplicate_column"
+      | Error
+          (Cairos.Frame.Index_mismatch { column; expected_length; found_length })
+        ->
+          Alcotest.(check string) "column" "shifted" column;
+          Alcotest.(check int) "expected_length" 3 expected_length;
+          Alcotest.(check int) "found_length" 3 found_length)
+
+(* --- drop / select --- *)
+
+(* The first drop is the affirmative arm: it removes a column the frame does
+   carry, so a [drop] answering [None] for everything cannot reach the second
+   arm at all. The second then takes the survivor away, which is the one
+   condition under which [drop] answers [None] — the result would have no
+   columns. It also drops the frame's head, so an implementation that only
+   ever removes from the tail is caught here rather than passing on a
+   coincidence. *)
+let frame_drop_last_column_is_none () =
+  let z = Test_helpers.make_daily_series dates_3 [| 1.0; 2.0; 3.0 |] in
+  let m = Test_helpers.make_daily_series dates_3 [| 4.0; 5.0; 6.0 |] in
+  match Cairos.Frame.of_series (Cairos.Nonempty.make ("z", z) [ ("m", m) ]) with
+  | Error e -> Alcotest.fail (Cairos.Frame.err_to_string e)
+  | Ok frame -> (
+      match Cairos.Frame.drop "m" frame with
+      | None -> Alcotest.fail "dropping one of two columns must leave a frame"
+      | Some out ->
+          Alcotest.(check (list string))
+            "the survivor is kept" [ "z" ]
+            (Cairos.Nonempty.to_list (Cairos.Frame.columns out));
+          Alcotest.(check (list (list (float 0.001))))
+            "values follow the survivor"
+            [ [ 1.0; 2.0; 3.0 ] ]
+            (frame_cells out);
+          Alcotest.(check bool)
+            "dropping the only remaining column is None" true
+            (Option.is_none (Cairos.Frame.drop "z" out)))
+
+(* An absent name is a no-op returning an equal frame, not [None] and not an
+   error, following [get]'s stance that a name the frame does not carry is not
+   a failure. The full column list and every value are enumerated: a rebuild
+   that reordered the columns, or paired a name with another column's values,
+   would pass a membership check.
+
+   The second arm removes a name the frame does carry, on the same fixture.
+   Without it a [drop] that never removes anything passes the first. *)
+let frame_drop_absent_name_is_noop () =
+  let z = Test_helpers.make_daily_series dates_3 [| 1.0; 2.0; 3.0 |] in
+  let m = Test_helpers.make_daily_series dates_3 [| 4.0; 5.0; 6.0 |] in
+  let a = Test_helpers.make_daily_series dates_3 [| 7.0; 8.0; 9.0 |] in
+  match
+    Cairos.Frame.of_series
+      (Cairos.Nonempty.make ("z", z) [ ("m", m); ("a", a) ])
+  with
+  | Error e -> Alcotest.fail (Cairos.Frame.err_to_string e)
+  | Ok frame -> (
+      (match Cairos.Frame.drop "nope" frame with
+      | None -> Alcotest.fail "dropping an absent name must not be None"
+      | Some out ->
+          Alcotest.(check (list string))
+            "every column survives" [ "z"; "m"; "a" ]
+            (Cairos.Nonempty.to_list (Cairos.Frame.columns out));
+          Alcotest.(check (list (list (float 0.001))))
+            "values are untouched"
+            [ [ 1.0; 2.0; 3.0 ]; [ 4.0; 5.0; 6.0 ]; [ 7.0; 8.0; 9.0 ] ]
+            (frame_cells out));
+      match Cairos.Frame.drop "m" frame with
+      | None -> Alcotest.fail "dropping a present name must leave a frame"
+      | Some out ->
+          Alcotest.(check (list string))
+            "a name this frame does carry is removed" [ "z"; "a" ]
+            (Cairos.Nonempty.to_list (Cairos.Frame.columns out));
+          Alcotest.(check (list (list (float 0.001))))
+            "the survivors keep their own values"
+            [ [ 1.0; 2.0; 3.0 ]; [ 7.0; 8.0; 9.0 ] ]
+            (frame_cells out))
+
+(* The request is the reverse of the frame's insertion order and the expected
+   list is enumerated in full: request order deliberately does not override
+   insertion order, matching [columns]. Only a whole-list comparison sees
+   that.
+
+   The second arm requests one name twice. A filter over the frame's columns
+   names it once for free; a lookup driven by the request list would emit the
+   column twice, and a length or membership check would not notice. *)
+let frame_select_uses_frame_order () =
+  let z = Test_helpers.make_daily_series dates_3 [| 1.0; 2.0; 3.0 |] in
+  let m = Test_helpers.make_daily_series dates_3 [| 4.0; 5.0; 6.0 |] in
+  let a = Test_helpers.make_daily_series dates_3 [| 7.0; 8.0; 9.0 |] in
+  match
+    Cairos.Frame.of_series
+      (Cairos.Nonempty.make ("z", z) [ ("m", m); ("a", a) ])
+  with
+  | Error e -> Alcotest.fail (Cairos.Frame.err_to_string e)
+  | Ok frame -> (
+      (match Cairos.Frame.select (Cairos.Nonempty.make "a" [ "z" ]) frame with
+      | None -> Alcotest.fail "two present names must select a frame"
+      | Some out ->
+          Alcotest.(check (list string))
+            "frame order, not request order" [ "z"; "a" ]
+            (Cairos.Nonempty.to_list (Cairos.Frame.columns out));
+          Alcotest.(check (list (list (float 0.001))))
+            "values follow their names"
+            [ [ 1.0; 2.0; 3.0 ]; [ 7.0; 8.0; 9.0 ] ]
+            (frame_cells out));
+      match
+        Cairos.Frame.select (Cairos.Nonempty.make "a" [ "a"; "m" ]) frame
+      with
+      | None -> Alcotest.fail "a repeated present name must select a frame"
+      | Some out ->
+          Alcotest.(check (list string))
+            "a repeated request names one column" [ "m"; "a" ]
+            (Cairos.Nonempty.to_list (Cairos.Frame.columns out));
+          Alcotest.(check (list (list (float 0.001))))
+            "the repeat carries its values once"
+            [ [ 4.0; 5.0; 6.0 ]; [ 7.0; 8.0; 9.0 ] ]
+            (frame_cells out))
+
+(* [None] means here what it means for [drop]: the result would have no
+   columns. The empty request cannot reach this — [Nonempty.t] rules it out at
+   compile time — so a request naming only absent columns is the only route.
+
+   The second arm mixes an absent name with a present one on the same fixture.
+   It pins that absent names are skipped rather than rejected, and it is the
+   affirmative arm: a [select] returning [None] for every input passes the
+   first assertion alone. *)
+let frame_select_no_name_present_is_none () =
+  let z = Test_helpers.make_daily_series dates_3 [| 1.0; 2.0; 3.0 |] in
+  let m = Test_helpers.make_daily_series dates_3 [| 4.0; 5.0; 6.0 |] in
+  match Cairos.Frame.of_series (Cairos.Nonempty.make ("z", z) [ ("m", m) ]) with
+  | Error e -> Alcotest.fail (Cairos.Frame.err_to_string e)
+  | Ok frame -> (
+      Alcotest.(check bool)
+        "no requested name is present" true
+        (Option.is_none
+           (Cairos.Frame.select (Cairos.Nonempty.make "nope" [ "other" ]) frame));
+      match Cairos.Frame.select (Cairos.Nonempty.make "nope" [ "m" ]) frame with
+      | None -> Alcotest.fail "an absent name must be skipped, not rejected"
+      | Some out ->
+          Alcotest.(check (list string))
+            "the present name is selected" [ "m" ]
+            (Cairos.Nonempty.to_list (Cairos.Frame.columns out));
+          Alcotest.(check (list (list (float 0.001))))
+            "values follow the selected name"
+            [ [ 4.0; 5.0; 6.0 ] ]
+            (frame_cells out))
 
 let dates_5 =
   [| "2024-01-01"; "2024-01-02"; "2024-01-03"; "2024-01-04"; "2024-01-05" |]
@@ -726,6 +995,15 @@ let tests =
       `Quick,
       frame_index_is_physically_shared );
     ("frame_mapi_cells_edge_shapes", `Quick, frame_mapi_cells_edge_shapes);
+    ("frame_add_column_appends_last", `Quick, frame_add_column_appends_last);
+    ("frame_add_column_duplicate_name", `Quick, frame_add_column_duplicate_name);
+    ("frame_add_column_index_mismatch", `Quick, frame_add_column_index_mismatch);
+    ("frame_drop_last_column_is_none", `Quick, frame_drop_last_column_is_none);
+    ("frame_drop_absent_name_is_noop", `Quick, frame_drop_absent_name_is_noop);
+    ("frame_select_uses_frame_order", `Quick, frame_select_uses_frame_order);
+    ( "frame_select_no_name_present_is_none",
+      `Quick,
+      frame_select_no_name_present_is_none );
     ("frame_head_returns_first_n_rows", `Quick, frame_head_returns_first_n_rows);
     ("frame_head_clamps_to_length", `Quick, frame_head_clamps_to_length);
     ( "frame_head_preserves_column_order",

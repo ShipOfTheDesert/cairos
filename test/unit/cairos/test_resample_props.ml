@@ -70,6 +70,109 @@ let downsample_timestamps_calendar_aligned =
               let _, time_of_day = Ptime.to_date_time t in
               time_of_day = ((0, 0, 0), 0)))
 
+(* Non-NaN observations per calendar month, in ascending (year, month) order,
+   derived from the source alone. The grouping rule is re-derived from the
+   documented contract — one bucket per calendar (year, month) touched, empty
+   buckets omitted (resample.mli) — rather than from [bucket_key_of_ptime], so
+   the property checks the implementation against the contract and not against
+   itself. Consecutive grouping is sound because index timestamps are strictly
+   increasing by construction. *)
+let expected_month_counts s =
+  let ts = Cairos.Index.timestamps (Cairos.Series.index s) in
+  let vs = Nx.to_array (Cairos.Series.values s) in
+  let acc = ref [] in
+  Array.iteri
+    (fun i t ->
+      let y, m, _d = Ptime.to_date t in
+      let observed = if Float.is_nan vs.(i) then 0 else 1 in
+      match !acc with
+      | (key, n) :: rest when key = (y, m) -> acc := (key, n + observed) :: rest
+      | _ -> acc := ((y, m), observed) :: !acc)
+    ts;
+  Array.of_list (List.rev !acc)
+
+(* [`Count] reports, per output bucket, exactly the source observations landing
+   in that bucket less that bucket's NaN count — the contract the aggregation
+   exists for, checked over a NaN density high enough that essentially every
+   bucket is mixed (qcheck_gen.ml, [daily_multi_month_with_nan_series_arb]). The
+   deterministic cases in test_resample.ml pin the boundary shapes (all-NaN
+   bucket, infinities); what random input adds is bucket *membership* — that
+   the exclusion is applied to the right slice, across variable month lengths
+   and a year boundary.
+
+   The second assertion bounds each count by its bucket's cardinality, obtained
+   as [`Sum] over an all-ones series built at the same length and therefore
+   carrying the identical index ([make_series_from_floats] derives timestamps
+   from the position alone). It is strictly weaker than the equality above — a
+   non-NaN count cannot exceed its bucket's size, so any input that trips the
+   bound trips the equality too. It is checked *first* precisely for that
+   reason: a count above the bucket's cardinality is the one failure class with
+   a diagnosis better than "expected 21, got 31", and reported second it would
+   be dead code behind the equality's report. What it adds over the equality is
+   a second, library-side derivation of bucket membership, so a regression that
+   moved observations between buckets is described in cardinality terms rather
+   than only as a per-month number disagreeing.
+
+   [Error] is unreachable for the same reason as the properties above — Day <
+   Month always, and synthetic 2024/2025-era daily bars produce no Ptime
+   boundary failure — and is terminated with [failwith] because reaching it
+   means a library invariant broke, not that the contract was violated. *)
+let resample_count_matches_bucket_membership =
+  QCheck.Test.make ~count:200 ~name:"resample_count_matches_bucket_membership"
+    Qcheck_gen.daily_multi_month_with_nan_series_arb (fun s ->
+      let ones =
+        Qcheck_gen.make_series_from_floats ~freq:Cairos.Freq.Day
+          (Array.make (Cairos.Series.length s) 1.0)
+      in
+      match
+        ( Cairos.Resample.resample ~agg:`Count Cairos.Freq.Month s,
+          Cairos.Resample.resample ~agg:`Sum Cairos.Freq.Month ones )
+      with
+      | Error _, _
+      | Ok _, Error _ ->
+          (* Unreachable: daily -> monthly is a valid downsample for synthetic
+             2024/2025-era inputs. *)
+          failwith
+            "unreachable: daily_multi_month_with_nan_series_arb produces valid \
+             downsample inputs for Cairos.Freq.Month"
+      | Ok counted, Ok sized -> (
+          let expected = expected_month_counts s in
+          let counts = Nx.to_array (Cairos.Series.values counted) in
+          let sizes = Nx.to_array (Cairos.Series.values sized) in
+          if
+            Array.length counts <> Array.length expected
+            || Array.length sizes <> Array.length counts
+          then
+            QCheck.Test.fail_reportf
+              "length %d: %d count buckets, %d size buckets, %d distinct \
+               calendar months in the source"
+              (Cairos.Series.length s) (Array.length counts)
+              (Array.length sizes) (Array.length expected)
+          else
+            let mismatches =
+              counts
+              |> Array.mapi (fun i c ->
+                  let (year, month), n = expected.(i) in
+                  if c > sizes.(i) then
+                    Some
+                      (Printf.sprintf
+                         "%04d-%02d: count %g exceeds bucket size %g" year month
+                         c sizes.(i))
+                  else if not (Float.equal c (float_of_int n)) then
+                    Some
+                      (Printf.sprintf "%04d-%02d: count %g, expected %d" year
+                         month c n)
+                  else None)
+              |> Array.to_list
+              |> List.filter_map Fun.id
+            in
+            match mismatches with
+            | [] -> true
+            | ms ->
+                QCheck.Test.fail_reportf "length %d: %d bucket(s) wrong: %s"
+                  (Cairos.Series.length s) (List.length ms)
+                  (String.concat "; " ms)))
+
 (* A downsample-to-minute rejection property was originally drafted as a
    [~count:200] property asserting Daily -> Minute resampling is rejected with
    [Error]. It was demoted to a deterministic Alcotest case
@@ -271,6 +374,7 @@ let () =
         downsample_never_grows_length;
         downsample_timestamps_calendar_aligned;
         monthly_resample_bucket_count_and_labels;
+        resample_count_matches_bucket_membership;
         resample_rejects_iff_target_not_lower;
       ]
   in

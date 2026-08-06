@@ -97,6 +97,19 @@ val daily_multi_month_series_arb :
     via {!shrink_daily_series} (prefix truncation preserves daily,
     epoch-anchored shape). *)
 
+val daily_multi_month_with_nan_series_arb :
+  ([ `Daily ], (float, Bigarray.float64_elt) Nx.t) Cairos.Series.t
+  QCheck.arbitrary
+(** As {!daily_multi_month_series_arb} — length [40..600] from the
+    {!epoch_2024_01_01_utc} epoch — but each cell is [Float.nan] with
+    probability 30% and otherwise finite in [[-1e6, 1e6]]. The density is far
+    above the frame generators' 5% so that essentially every calendar-month
+    bucket is mixed rather than NaN-free, which is what [Resample]'s [`Count]
+    property needs to exercise. A calendar month never comes out entirely NaN at
+    this density, so the all-NaN bucket stays pinned by its deterministic case.
+    Shrinks via {!shrink_daily_series}, which preserves the NaN pattern of the
+    retained prefix. *)
+
 (** {1 Paired-series arbitraries} *)
 
 val paired_aligned_daily_arb :

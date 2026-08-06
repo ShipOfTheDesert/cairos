@@ -232,6 +232,42 @@ let daily_multi_month_series_arb =
         (Cairos.Series.length s))
     gen
 
+(* One cell of a sparse daily series: 30% NaN, otherwise finite in
+   [-1e6, 1e6]. The density is deliberately far above the 5% used by the frame
+   cell generators. At 5%, a 30-day calendar bucket is NaN-free with
+   probability 0.95^30 ~ 21%, so roughly a fifth of buckets would carry no NaN
+   at all and the mixed-bucket case would be sampled thinly. At 30% it is
+   0.7^30 ~ 2e-5, so essentially every bucket is mixed and the property is
+   exercising the NaN-exclusion rule on every draw rather than mostly
+   re-checking bucket cardinality. *)
+let cell_daily_sparse_gen =
+  let open QCheck.Gen in
+  let* roll = int_range 0 9 in
+  if roll < 3 then return Float.nan else float_range (-1e6) 1e6
+
+(* Daily series spanning many calendar months with ~30% of cells NaN. Same
+   length range and epoch as [daily_multi_month_series_arb], so a daily ->
+   monthly downsample yields the same variable, non-trivial bucket count; what
+   differs is that the values carry NaN. Buckets never come out all-NaN at
+   this length and density (a calendar month would need ~28 consecutive NaN
+   draws), so the all-NaN-bucket-is-zero case stays pinned by its deterministic
+   Alcotest case rather than resting on a draw that never arrives.
+   [shrink_daily_series] rebuilds through [make_series_from_floats], which
+   copies values verbatim, so a shrunk counter-example keeps its NaN
+   pattern. *)
+let daily_multi_month_with_nan_series_arb =
+  let open QCheck in
+  let gen =
+    Gen.map
+      (make_series_from_floats ~freq:Cairos.Freq.Day)
+      (Gen.array_size (Gen.int_range 40 600) cell_daily_sparse_gen)
+  in
+  make ~shrink:shrink_daily_series
+    ~print:(fun s ->
+      Printf.sprintf "<daily multi-month NaN-bearing series len=%d>"
+        (Cairos.Series.length s))
+    gen
+
 (* Paired-series arbitraries *)
 
 let paired_aligned_daily_arb =
