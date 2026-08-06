@@ -44,7 +44,7 @@ val err_to_string : err -> string
 (** Render [err] as a human-readable one-line message. *)
 
 val resample :
-  agg:[ `First | `Last | `Sum | `Mean | `Min | `Max ] ->
+  agg:[ `First | `Last | `Sum | `Mean | `Min | `Max | `Count ] ->
   'target Freq.t ->
   ('src, (float, 'b) Nx.t) Series.t ->
   (('target, (float, Bigarray.float64_elt) Nx.t) Series.t, err) result
@@ -62,6 +62,12 @@ val resample :
     Each non-empty bucket produces one output point whose timestamp is the
     bucket boundary. Empty buckets are omitted — the output length equals the
     number of non-empty buckets.
+
+    [`Count] is the number of non-NaN observations in the bucket, delivered as
+    an integral float because the output element type is always float64.
+    Infinities count as observations, matching {!Series.dropna}. It reaches
+    [0.0] only for a non-empty all-NaN bucket, since an empty bucket is omitted
+    entirely.
 
     Returns [Error (Target_not_lower _)] when [target_freq] is not strictly
     lower than the source frequency, carrying both frequency witnesses. The

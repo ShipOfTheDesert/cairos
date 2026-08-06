@@ -18,10 +18,10 @@
           "r_square": 0.999713
         },
         {
-          "estimate": 269848.0,
+          "estimate": 269391.0,
           "instance": "monotonic-clock",
           "name": "align/asof-backward/n=100",
-          "r_square": 0.999536
+          "r_square": 0.99996
         },
         {
           "estimate": 3351.46,
@@ -36,10 +36,10 @@
           "r_square": 0.999846
         },
         {
-          "estimate": 13728500.0,
+          "estimate": 13431000.0,
           "instance": "monotonic-clock",
           "name": "align/asof-backward/n=1000",
-          "r_square": 0.999949
+          "r_square": 0.999867
         },
         {
           "estimate": 103130.0,
@@ -54,46 +54,46 @@
           "r_square": 1.0
         },
         {
-          "estimate": 1331990000.0,
+          "estimate": 1338050000.0,
           "instance": "monotonic-clock",
           "name": "align/asof-backward/n=10000",
-          "r_square": 0.999992
+          "r_square": 1.0
         },
         {
-          "estimate": 9.176360000000001,
+          "estimate": 9.18173,
           "instance": "major-allocated",
           "name": "align/inner/n=100",
-          "r_square": 0.954829
+          "r_square": 0.955643
         },
         {
-          "estimate": 4612.1,
+          "estimate": 4615.69,
           "instance": "minor-allocated",
           "name": "align/inner/n=100",
-          "r_square": 0.992326
+          "r_square": 0.992426
         },
         {
-          "estimate": 8146.01,
+          "estimate": 8160.75,
           "instance": "monotonic-clock",
           "name": "align/inner/n=100",
-          "r_square": 0.9988590000000001
+          "r_square": 0.999916
         },
         {
-          "estimate": 12988.1,
+          "estimate": 12988.5,
           "instance": "major-allocated",
           "name": "align/inner/n=1000",
-          "r_square": 0.99999
+          "r_square": 0.999991
         },
         {
-          "estimate": 29315.0,
+          "estimate": 29315.6,
           "instance": "minor-allocated",
           "name": "align/inner/n=1000",
           "r_square": 0.999996
         },
         {
-          "estimate": 96644.3,
+          "estimate": 94989.89999999999,
           "instance": "monotonic-clock",
           "name": "align/inner/n=1000",
-          "r_square": 0.994667
+          "r_square": 0.999043
         },
         {
           "estimate": 129038.0,
@@ -108,10 +108,10 @@
           "r_square": 0.999974
         },
         {
-          "estimate": 951651.0,
+          "estimate": 953577.0,
           "instance": "monotonic-clock",
           "name": "align/inner/n=10000",
-          "r_square": 0.999279
+          "r_square": 0.998619
         },
         {
           "estimate": 250.626,
@@ -126,10 +126,10 @@
           "r_square": 0.999704
         },
         {
-          "estimate": 273641.0,
+          "estimate": 270102.0,
           "instance": "monotonic-clock",
           "name": "align/left/n=100",
-          "r_square": 0.999688
+          "r_square": 0.999931
         },
         {
           "estimate": 3349.48,
@@ -144,10 +144,10 @@
           "r_square": 0.999875
         },
         {
-          "estimate": 13503900.0,
+          "estimate": 13334700.0,
           "instance": "monotonic-clock",
           "name": "align/left/n=1000",
-          "r_square": 0.999767
+          "r_square": 0.999926
         },
         {
           "estimate": 103130.0,
@@ -162,82 +162,82 @@
           "r_square": 1.0
         },
         {
-          "estimate": 1331980000.0,
+          "estimate": 1303270000.0,
           "instance": "monotonic-clock",
           "name": "align/left/n=10000",
-          "r_square": 1.0
+          "r_square": 0.999979
         },
         {
-          "estimate": 1.01407,
+          "estimate": 1.02145,
           "instance": "major-allocated",
           "name": "align/map2-nan-filled/n=100",
-          "r_square": 0.935238
+          "r_square": 0.939595
         },
         {
-          "estimate": 1954.28,
+          "estimate": 1959.62,
           "instance": "minor-allocated",
           "name": "align/map2-nan-filled/n=100",
-          "r_square": 0.98434
+          "r_square": 0.985344
         },
         {
-          "estimate": 3217.45,
+          "estimate": 3196.79,
           "instance": "monotonic-clock",
           "name": "align/map2-nan-filled/n=100",
-          "r_square": 0.99671
+          "r_square": 0.999953
         },
         {
-          "estimate": 2877.63,
+          "estimate": 2880.89,
           "instance": "major-allocated",
           "name": "align/map2-nan-filled/n=1000",
-          "r_square": 0.995231
+          "r_square": 0.995293
         },
         {
-          "estimate": 15526.8,
+          "estimate": 15531.4,
           "instance": "minor-allocated",
           "name": "align/map2-nan-filled/n=1000",
-          "r_square": 0.9946970000000001
+          "r_square": 0.994881
         },
         {
-          "estimate": 32096.0,
+          "estimate": 31265.0,
           "instance": "monotonic-clock",
           "name": "align/map2-nan-filled/n=1000",
-          "r_square": 0.996074
+          "r_square": 0.99877
         },
         {
-          "estimate": 29779.1,
+          "estimate": 29777.4,
           "instance": "major-allocated",
           "name": "align/map2-nan-filled/n=10000",
-          "r_square": 0.999663
+          "r_square": 0.999673
         },
         {
-          "estimate": 158370.0,
+          "estimate": 158398.0,
           "instance": "minor-allocated",
           "name": "align/map2-nan-filled/n=10000",
-          "r_square": 0.999564
+          "r_square": 0.999572
         },
         {
-          "estimate": 321080.0,
+          "estimate": 315939.0,
           "instance": "monotonic-clock",
           "name": "align/map2-nan-filled/n=10000",
-          "r_square": 0.998739
+          "r_square": 0.9978669999999999
         },
         {
-          "estimate": 1.03101,
+          "estimate": 1.02145,
           "instance": "major-allocated",
           "name": "align/map2-nan/n=100",
-          "r_square": 0.941459
+          "r_square": 0.939595
         },
         {
-          "estimate": 1963.64,
+          "estimate": 1959.62,
           "instance": "minor-allocated",
           "name": "align/map2-nan/n=100",
-          "r_square": 0.986116
+          "r_square": 0.985344
         },
         {
-          "estimate": 3188.35,
+          "estimate": 3213.96,
           "instance": "monotonic-clock",
           "name": "align/map2-nan/n=100",
-          "r_square": 0.999013
+          "r_square": 0.999905
         },
         {
           "estimate": 2882.4,
@@ -252,10 +252,10 @@
           "r_square": 0.995008
         },
         {
-          "estimate": 31648.0,
+          "estimate": 31628.3,
           "instance": "monotonic-clock",
           "name": "align/map2-nan/n=1000",
-          "r_square": 0.993986
+          "r_square": 0.9992
         },
         {
           "estimate": 29777.4,
@@ -270,46 +270,46 @@
           "r_square": 0.999572
         },
         {
-          "estimate": 321084.0,
+          "estimate": 317969.0,
           "instance": "monotonic-clock",
           "name": "align/map2-nan/n=10000",
-          "r_square": 0.998942
+          "r_square": 0.999099
         },
         {
-          "estimate": 1.12805,
+          "estimate": 1.12168,
           "instance": "major-allocated",
           "name": "align/map2/n=100",
-          "r_square": 0.964991
+          "r_square": 0.964479
         },
         {
-          "estimate": 1971.57,
+          "estimate": 1969.5,
           "instance": "minor-allocated",
           "name": "align/map2/n=100",
-          "r_square": 0.987657
+          "r_square": 0.987185
         },
         {
-          "estimate": 3144.38,
+          "estimate": 3171.44,
           "instance": "monotonic-clock",
           "name": "align/map2/n=100",
-          "r_square": 0.999161
+          "r_square": 0.999877
         },
         {
-          "estimate": 2885.8,
+          "estimate": 2886.87,
           "instance": "major-allocated",
           "name": "align/map2/n=1000",
-          "r_square": 0.995591
+          "r_square": 0.995651
         },
         {
           "estimate": 15552.5,
           "instance": "minor-allocated",
           "name": "align/map2/n=1000",
-          "r_square": 0.995238
+          "r_square": 0.995326
         },
         {
-          "estimate": 31268.2,
+          "estimate": 31106.2,
           "instance": "monotonic-clock",
           "name": "align/map2/n=1000",
-          "r_square": 0.9973070000000001
+          "r_square": 0.99925
         },
         {
           "estimate": 29758.2,
@@ -324,10 +324,10 @@
           "r_square": 0.9995849999999999
         },
         {
-          "estimate": 315417.0,
+          "estimate": 315163.0,
           "instance": "monotonic-clock",
           "name": "align/map2/n=10000",
-          "r_square": 0.998224
+          "r_square": 0.998828
         }
       ]
     },
@@ -336,58 +336,58 @@
       "bench": "backtest",
       "cells": [
         {
-          "estimate": 516409.0,
+          "estimate": 520599.0,
           "instance": "major-allocated",
           "name": "run/n_bars=1000",
-          "r_square": 0.999996
+          "r_square": 0.999997
         },
         {
-          "estimate": 1767940.0,
+          "estimate": 2446310.0,
           "instance": "minor-allocated",
           "name": "run/n_bars=1000",
-          "r_square": 0.999999
+          "r_square": 0.999995
         },
         {
-          "estimate": 4338100.0,
+          "estimate": 4546770.0,
           "instance": "monotonic-clock",
           "name": "run/n_bars=1000",
-          "r_square": 0.999641
+          "r_square": 0.999718
         },
         {
-          "estimate": 70415.8,
+          "estimate": 75874.10000000001,
           "instance": "major-allocated",
           "name": "run/n_bars=250",
-          "r_square": 0.997034
+          "r_square": 0.999827
         },
         {
-          "estimate": 589125.0,
+          "estimate": 763032.0,
           "instance": "minor-allocated",
           "name": "run/n_bars=250",
-          "r_square": 0.999976
+          "r_square": 0.999986
         },
         {
-          "estimate": 1088170.0,
+          "estimate": 1170200.0,
           "instance": "monotonic-clock",
           "name": "run/n_bars=250",
-          "r_square": 0.999743
+          "r_square": 0.999594
         },
         {
-          "estimate": 259516.0,
+          "estimate": 263104.0,
           "instance": "major-allocated",
           "name": "run/n_bars=500",
-          "r_square": 0.999985
+          "r_square": 0.999993
         },
         {
-          "estimate": 896406.0,
+          "estimate": 1239320.0,
           "instance": "minor-allocated",
           "name": "run/n_bars=500",
-          "r_square": 0.999973
+          "r_square": 0.999989
         },
         {
-          "estimate": 2202000.0,
+          "estimate": 2302290.0,
           "instance": "monotonic-clock",
           "name": "run/n_bars=500",
-          "r_square": 0.999508
+          "r_square": 0.999744
         }
       ]
     },
@@ -408,10 +408,10 @@
           "r_square": 0.999636
         },
         {
-          "estimate": 217245.0,
+          "estimate": 217829.0,
           "instance": "monotonic-clock",
           "name": "cumprod vs expanding/cumprod / 10k daily float64",
-          "r_square": 0.996617
+          "r_square": 0.998878
         },
         {
           "estimate": 49997700.0,
@@ -426,10 +426,10 @@
           "r_square": 1.0
         },
         {
-          "estimate": 555408000.0,
+          "estimate": 547415000.0,
           "instance": "monotonic-clock",
           "name": "cumprod vs expanding/expanding product / 10k daily float64",
-          "r_square": 0.999839
+          "r_square": 0.999316
         }
       ]
     },
@@ -438,22 +438,64 @@
       "bench": "dropna",
       "cells": [
         {
-          "estimate": 63169.4,
+          "estimate": 63207.7,
           "instance": "major-allocated",
           "name": "dropna / 10k daily float64, 10% NaN",
-          "r_square": 0.998594
+          "r_square": 0.998602
         },
         {
-          "estimate": 83009.2,
+          "estimate": 83070.3,
           "instance": "minor-allocated",
           "name": "dropna / 10k daily float64, 10% NaN",
-          "r_square": 0.997898
+          "r_square": 0.997913
         },
         {
-          "estimate": 488742.0,
+          "estimate": 481496.0,
           "instance": "monotonic-clock",
           "name": "dropna / 10k daily float64, 10% NaN",
-          "r_square": 0.9990329999999999
+          "r_square": 0.999569
+        }
+      ]
+    },
+    {
+      "$schema": "cairos-bench-baseline-v1",
+      "bench": "frame_columns",
+      "cells": [
+        {
+          "estimate": 5759.98,
+          "instance": "monotonic-clock",
+          "name": "frame_columns/add_column/n=100",
+          "r_square": 0.997408
+        },
+        {
+          "estimate": 8532.959999999999,
+          "instance": "monotonic-clock",
+          "name": "frame_columns/add_column/n=500",
+          "r_square": 0.998353
+        },
+        {
+          "estimate": 326.357,
+          "instance": "monotonic-clock",
+          "name": "frame_columns/drop/n=100",
+          "r_square": 0.9993339999999999
+        },
+        {
+          "estimate": 1539.41,
+          "instance": "monotonic-clock",
+          "name": "frame_columns/drop/n=500",
+          "r_square": 0.999294
+        },
+        {
+          "estimate": 2189.51,
+          "instance": "monotonic-clock",
+          "name": "frame_columns/select/n=100",
+          "r_square": 0.9998050000000001
+        },
+        {
+          "estimate": 13928.2,
+          "instance": "monotonic-clock",
+          "name": "frame_columns/select/n=500",
+          "r_square": 0.999957
         }
       ]
     },
@@ -462,10 +504,10 @@
       "bench": "frame_xsec",
       "cells": [
         {
-          "estimate": 3699.52,
+          "estimate": 3695.81,
           "instance": "major-allocated",
           "name": "frame_xsec/column_map/n=100",
-          "r_square": 0.9999980000000001
+          "r_square": 0.999994
         },
         {
           "estimate": 40606100.0,
@@ -474,16 +516,16 @@
           "r_square": 1.0
         },
         {
-          "estimate": 21950200.0,
+          "estimate": 21962400.0,
           "instance": "monotonic-clock",
           "name": "frame_xsec/column_map/n=100",
-          "r_square": 0.999729
+          "r_square": 0.999596
         },
         {
-          "estimate": 14883.2,
+          "estimate": 14897.7,
           "instance": "major-allocated",
           "name": "frame_xsec/column_map/n=500",
-          "r_square": 1.0
+          "r_square": 0.999999
         },
         {
           "estimate": 203000000.0,
@@ -492,13 +534,13 @@
           "r_square": 1.0
         },
         {
-          "estimate": 108966000.0,
+          "estimate": 109548000.0,
           "instance": "monotonic-clock",
           "name": "frame_xsec/column_map/n=500",
-          "r_square": 0.999856
+          "r_square": 0.999175
         },
         {
-          "estimate": 629751.0,
+          "estimate": 628161.0,
           "instance": "major-allocated",
           "name": "frame_xsec/rank/n=100",
           "r_square": 1.0
@@ -510,31 +552,31 @@
           "r_square": 1.0
         },
         {
-          "estimate": 1395950000.0,
+          "estimate": 1366400000.0,
           "instance": "monotonic-clock",
           "name": "frame_xsec/rank/n=100",
-          "r_square": 0.9993300000000001
+          "r_square": 0.999947
         },
         {
-          "estimate": 3698220.0,
+          "estimate": 3698650.0,
           "instance": "major-allocated",
           "name": "frame_xsec/rank/n=500",
           "r_square": 1.0
         },
         {
-          "estimate": 1102570000.0,
+          "estimate": 1102540000.0,
           "instance": "minor-allocated",
           "name": "frame_xsec/rank/n=500",
           "r_square": 1.0
         },
         {
-          "estimate": 7020190000.0,
+          "estimate": 6889510000.0,
           "instance": "monotonic-clock",
           "name": "frame_xsec/rank/n=500",
-          "r_square": 0.999977
+          "r_square": 0.999976
         },
         {
-          "estimate": 139543.0,
+          "estimate": 139538.0,
           "instance": "major-allocated",
           "name": "frame_xsec/zscore/n=100",
           "r_square": 1.0
@@ -546,28 +588,28 @@
           "r_square": 1.0
         },
         {
-          "estimate": 1390910000.0,
+          "estimate": 1376660000.0,
           "instance": "monotonic-clock",
           "name": "frame_xsec/zscore/n=100",
-          "r_square": 0.99942
+          "r_square": 0.999902
         },
         {
-          "estimate": 696068.0,
+          "estimate": 697781.0,
           "instance": "major-allocated",
           "name": "frame_xsec/zscore/n=500",
           "r_square": 1.0
         },
         {
-          "estimate": 1098480000.0,
+          "estimate": 1098410000.0,
           "instance": "minor-allocated",
           "name": "frame_xsec/zscore/n=500",
           "r_square": 1.0
         },
         {
-          "estimate": 6982630000.0,
+          "estimate": 6932540000.0,
           "instance": "monotonic-clock",
           "name": "frame_xsec/zscore/n=500",
-          "r_square": 0.999891
+          "r_square": 0.999999
         }
       ]
     },
@@ -576,40 +618,58 @@
       "bench": "resample",
       "cells": [
         {
-          "estimate": 2838.23,
+          "estimate": 3568.16,
+          "instance": "major-allocated",
+          "name": "resample/daily-to-monthly-count/2500",
+          "r_square": 0.99999
+        },
+        {
+          "estimate": 1122990.0,
+          "instance": "minor-allocated",
+          "name": "resample/daily-to-monthly-count/2500",
+          "r_square": 0.999986
+        },
+        {
+          "estimate": 599964.0,
+          "instance": "monotonic-clock",
+          "name": "resample/daily-to-monthly-count/2500",
+          "r_square": 0.999727
+        },
+        {
+          "estimate": 2801.56,
           "instance": "major-allocated",
           "name": "resample/daily-to-monthly/2500",
-          "r_square": 0.999893
+          "r_square": 0.999927
         },
         {
-          "estimate": 155010.0,
+          "estimate": 143083.0,
           "instance": "minor-allocated",
           "name": "resample/daily-to-monthly/2500",
-          "r_square": 0.999869
+          "r_square": 0.999879
         },
         {
-          "estimate": 98873.10000000001,
+          "estimate": 79993.8,
           "instance": "monotonic-clock",
           "name": "resample/daily-to-monthly/2500",
-          "r_square": 0.9982
+          "r_square": 0.999389
         },
         {
-          "estimate": 8773.690000000001,
+          "estimate": 8522.879999999999,
           "instance": "major-allocated",
           "name": "resample/daily-to-weekly/2500",
-          "r_square": 0.999929
+          "r_square": 0.999962
         },
         {
-          "estimate": 452251.0,
+          "estimate": 400831.0,
           "instance": "minor-allocated",
           "name": "resample/daily-to-weekly/2500",
-          "r_square": 0.999953
+          "r_square": 0.999957
         },
         {
-          "estimate": 308373.0,
+          "estimate": 233043.0,
           "instance": "monotonic-clock",
           "name": "resample/daily-to-weekly/2500",
-          "r_square": 0.9995309999999999
+          "r_square": 0.999472
         }
       ]
     },
@@ -630,10 +690,10 @@
           "r_square": 0.9999710000000001
         },
         {
-          "estimate": 2073430.0,
+          "estimate": 2064290.0,
           "instance": "monotonic-clock",
           "name": "scan/cumprod/100k",
-          "r_square": 0.998839
+          "r_square": 0.9987239999999999
         },
         {
           "estimate": 200026.0,
@@ -648,10 +708,10 @@
           "r_square": 0.9999710000000001
         },
         {
-          "estimate": 2166320.0,
+          "estimate": 2165210.0,
           "instance": "monotonic-clock",
           "name": "scan/cumsum/100k",
-          "r_square": 0.9993300000000001
+          "r_square": 0.999861
         },
         {
           "estimate": 200025.0,
@@ -666,10 +726,10 @@
           "r_square": 0.9999749999999999
         },
         {
-          "estimate": 1920470.0,
+          "estimate": 1923760.0,
           "instance": "monotonic-clock",
           "name": "scan/scan-add/100k",
-          "r_square": 0.999283
+          "r_square": 0.999385
         }
       ]
     },
@@ -678,22 +738,22 @@
       "bench": "series_map",
       "cells": [
         {
-          "estimate": 37.6261,
+          "estimate": 35.4518,
           "instance": "major-allocated",
           "name": "cairos/Series.map (*2 + 1) / 100k daily float64",
-          "r_square": 0.794902
+          "r_square": 0.7954329999999999
         },
         {
-          "estimate": 1104.83,
+          "estimate": 899.154,
           "instance": "minor-allocated",
           "name": "cairos/Series.map (*2 + 1) / 100k daily float64",
-          "r_square": 0.321337
+          "r_square": 0.257138
         },
         {
-          "estimate": 3580460.0,
+          "estimate": 3668100.0,
           "instance": "monotonic-clock",
           "name": "cairos/Series.map (*2 + 1) / 100k daily float64",
-          "r_square": 0.904543
+          "r_square": 0.840648
         }
       ]
     },
@@ -714,10 +774,10 @@
           "r_square": 0.999985
         },
         {
-          "estimate": 27751600.0,
+          "estimate": 27773100.0,
           "instance": "monotonic-clock",
           "name": "expanding/max/10k",
-          "r_square": 0.999943
+          "r_square": 0.999952
         }
       ]
     },
@@ -738,10 +798,10 @@
           "r_square": 0.9999980000000001
         },
         {
-          "estimate": 10416700.0,
+          "estimate": 10321300.0,
           "instance": "monotonic-clock",
           "name": "rolling/n=10",
-          "r_square": 0.999872
+          "r_square": 0.999881
         },
         {
           "estimate": 11162.4,
@@ -756,10 +816,10 @@
           "r_square": 0.999997
         },
         {
-          "estimate": 10866200.0,
+          "estimate": 10801200.0,
           "instance": "monotonic-clock",
           "name": "rolling/n=200",
-          "r_square": 0.999812
+          "r_square": 0.9999479999999999
         },
         {
           "estimate": 11167.1,
@@ -774,10 +834,10 @@
           "r_square": 0.999995
         },
         {
-          "estimate": 10490800.0,
+          "estimate": 10480100.0,
           "instance": "monotonic-clock",
           "name": "rolling/n=50",
-          "r_square": 0.999926
+          "r_square": 0.999696
         }
       ]
     }

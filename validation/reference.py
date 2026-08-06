@@ -279,13 +279,23 @@ def frame_zscore(rows: list[list[float]], columns: list[str]) -> pd.DataFrame:
 # that 'sum' cannot see).
 #
 # EMPTY-BUCKET CONTRACT (encoded in the oracle, not the comparator):
-# pandas emits every calendar month in the range, including zero-observation
-# ones; the Cairos contract omits empty buckets. The oracle drops periods by
-# OBSERVATION COUNT (resample(...).count() == 0), never dropna(): dropna would
-# also delete a legitimately-NaN aggregate (a 'last' over a bucket whose final
-# observation is NaN), conflating "no observations" with "NaN observation". The
-# committed business-day fixture happens to have an observation in every month,
-# so the guard is inert here, but it encodes the contract regardless.
+# pandas emits every calendar month in the range, including ones no source row
+# falls in; the Cairos contract omits a bucket exactly when it has NO SOURCE
+# ROWS. The oracle drops periods by ROW COUNT (resample(...).size() == 0) — not
+# by dropna(), and not by resample(...).count():
+#
+#   dropna() would delete a legitimately-NaN aggregate (a 'last' over a bucket
+#   whose final observation is NaN).
+#
+#   .count() counts non-NaN values, so it reads 0 for a bucket whose every row
+#   is NaN. That bucket is real under the contract and must be emitted — with
+#   its NaN aggregate under 'last', or with 0.0 under the count aggregation.
+#
+# Both would conflate "no rows" with "rows that are all NaN". Corrected from
+# .count() to .size() on 2026-08-03, when the mixed-NaN fixture below made the
+# two diverge for the first time. The business-day fixture is NaN-free and has
+# a row in every month it spans, so its emitted values are unchanged by the
+# correction.
 
 RESAMPLE_DAILY_SEED = 62
 RESAMPLE_START = "2024-01-02"
@@ -305,10 +315,52 @@ def resample_daily_input() -> pd.Series:
 
 
 def resample_monthly_reference(daily: pd.Series, agg: str) -> pd.Series:
-    # agg in {"sum", "last"}. Bucket-start anchoring via resample('MS').
+    # agg in {"sum", "last", "count"}. Bucket-start anchoring via resample('MS').
     resampled = daily.resample("MS").agg(agg)
-    counts = daily.resample("MS").count()
-    return resampled[counts > 0]
+    rows_per_bucket = daily.resample("MS").size()
+    return resampled[rows_per_bucket > 0]
+
+
+# --- Mixed-NaN daily->monthly count fixture ------------------------------------
+#
+# Input for the count aggregation's Layer 2 cross-validation. This is a fixture
+# INPUT, not a reference implementation: the expected output is pandas' own
+# resample('MS').count(), and there is no algorithm here that could be derived
+# independently of anything. What the input has to do is reach a case the
+# business-day fixture above cannot. That one is NaN-free (rng.normal over
+# bdate_range), so count == size in every one of its buckets and the non-NaN
+# rule it is supposed to pin is never exercised by it.
+#
+# Small enough to check by eye. Per calendar month:
+#
+#   2025-01  three rows, one NaN in the interior  -> count 2
+#   2025-02  two rows, leading NaN                -> count 1
+#   2025-03  no rows at all                       -> bucket OMITTED
+#   2025-04  three rows, trailing NaN             -> count 2
+#   2025-05  two rows, both NaN                   -> count 0, bucket EMITTED
+#
+# The last two months are the pair the contract distinguishes and pandas'
+# .count() does not. A bucket with no source rows is omitted entirely; a bucket
+# whose every row is NaN is a real bucket that reports zero observations. See
+# the empty-bucket contract note above resample_monthly_reference.
+
+RESAMPLE_NAN_DAILY: list[tuple[str, float]] = [
+    ("2025-01-05", 1.0),
+    ("2025-01-06", NAN),
+    ("2025-01-07", 2.0),
+    ("2025-02-03", NAN),
+    ("2025-02-04", 4.0),
+    ("2025-04-01", 5.0),
+    ("2025-04-02", 6.0),
+    ("2025-04-03", NAN),
+    ("2025-05-06", NAN),
+    ("2025-05-07", NAN),
+]
+
+
+def resample_nan_daily_input() -> pd.Series:
+    dates = pd.to_datetime([d for d, _ in RESAMPLE_NAN_DAILY])
+    return pd.Series([v for _, v in RESAMPLE_NAN_DAILY], index=dates)
 
 
 def write_resample_series_csv(name: str, series: pd.Series) -> None:
@@ -941,6 +993,13 @@ def main():
     write_resample_series_csv(
         "resample_monthly_last_expected",
         resample_monthly_reference(daily, "last"),
+    )
+
+    nan_daily = resample_nan_daily_input()
+    write_resample_series_csv("resample_nan_daily_input", nan_daily)
+    write_resample_series_csv(
+        "resample_nan_monthly_count_expected",
+        resample_monthly_reference(nan_daily, "count"),
     )
 
 

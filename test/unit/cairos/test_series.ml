@@ -548,6 +548,117 @@ let first_valid_first_element () =
       Alcotest.(check int) "index" 0 i;
       Alcotest.(check (float 0.001)) "value" 1.0 v
 
+(* The boundary indices are the whole point: [0] and [length - 1] are the two
+   in-range ends, and [length] and a negative index are the two out-of-range
+   ones. An implementation guarding only the upper bound passes this case and
+   fails [series_at_out_of_range]. *)
+let series_at_in_range () =
+  let s =
+    Test_helpers.make_daily_series
+      [| "2024-01-01"; "2024-01-02"; "2024-01-03"; "2024-01-04"; "2024-01-05" |]
+      [| 10.0; 20.0; 30.0; 40.0; 50.0 |]
+  in
+  let some label expected actual =
+    match actual with
+    | None -> Alcotest.fail (label ^ ": expected Some")
+    | Some v -> Alcotest.(check (float 0.001)) label expected v
+  in
+  some "at 0" 10.0 (Cairos.Series.at 0 s);
+  some "at 2" 30.0 (Cairos.Series.at 2 s);
+  some "at (length - 1)" 50.0 (Cairos.Series.at 4 s);
+  some "last" 50.0 (Cairos.Series.last s);
+  (* A strided view, where position 0 is not the tensor's first element.
+     [Nx.item] reading through the view's offset is what makes these agree; an
+     implementation ignoring it returns 10.0 here and passes every assertion
+     above, so this is the one arm that distinguishes them. *)
+  let view = Cairos.Series.tail 2 s in
+  Alcotest.(check int) "view length" 2 (Cairos.Series.length view);
+  some "at 0 on a tail view" 40.0 (Cairos.Series.at 0 view);
+  some "last on a tail view" 50.0 (Cairos.Series.last view);
+  let mid = Cairos.Series.slice ~start:1 ~stop:4 s in
+  some "at 0 on a slice view" 20.0 (Cairos.Series.at 0 mid);
+  some "last on a slice view" 40.0 (Cairos.Series.last mid)
+
+(* [Series.make] matches the index against the leading axis alone, so it accepts
+   a tensor of any rank >= 1 and a rank-2 series is a construction the public
+   API admits. [Nx.item] wants one index per dimension and raises given fewer,
+   so this is the arm where an unguarded [at] breaks the no-exceptions
+   invariant rather than returning [None].
+
+   The fixture asserts the construction succeeded before asserting the
+   accessors, because a [make] that had rejected the tensor would make both
+   [None] assertions pass for a reason that has nothing to do with [at]. *)
+let series_at_higher_rank_is_none () =
+  let dates = [| "2024-01-01"; "2024-01-02"; "2024-01-03" |] in
+  match Cairos.Index.daily dates with
+  | Error e -> Alcotest.fail (Cairos.Index.err_to_string e)
+  | Ok idx -> (
+      let vals =
+        Nx.create Nx.float64 [| 3; 2 |] [| 10.0; 11.0; 20.0; 21.0; 30.0; 31.0 |]
+      in
+      match Cairos.Series.make idx vals with
+      | Error e ->
+          Alcotest.fail
+            ("expected make to accept a rank-2 tensor: "
+            ^ Cairos.Series.err_to_string e)
+      | Ok s ->
+          Alcotest.(check int) "fixture length" 3 (Cairos.Series.length s);
+          Alcotest.(check bool)
+            "at 1 is None" true
+            (Option.is_none (Cairos.Series.at 1 s));
+          Alcotest.(check bool)
+            "at 0 is None" true
+            (Option.is_none (Cairos.Series.at 0 s));
+          Alcotest.(check bool)
+            "last is None" true
+            (Option.is_none (Cairos.Series.last s)))
+
+let series_at_out_of_range () =
+  let s =
+    Test_helpers.make_daily_series
+      [| "2024-01-01"; "2024-01-02"; "2024-01-03" |]
+      [| 10.0; 20.0; 30.0 |]
+  in
+  let none label actual =
+    Alcotest.(check bool) (label ^ " is None") true (Option.is_none actual)
+  in
+  (* Affirmative arm on the same fixture: an [at] that returned [None] for
+     everything would satisfy every assertion below for the wrong reason. *)
+  Alcotest.(check bool)
+    "at 0 is Some" true
+    (Option.is_some (Cairos.Series.at 0 s));
+  none "at length" (Cairos.Series.at 3 s);
+  none "at (length + 10)" (Cairos.Series.at 13 s);
+  none "at (-1)" (Cairos.Series.at (-1) s);
+  none "at (-100)" (Cairos.Series.at (-100) s);
+  let empty = Test_helpers.make_daily_series [||] [||] in
+  (* The empty fixture admits no affirmative [at], so pin that it is genuinely
+     an empty series rather than a construction that silently produced one. *)
+  Alcotest.(check int) "empty fixture length" 0 (Cairos.Series.length empty);
+  none "at 0 on an empty series" (Cairos.Series.at 0 empty)
+
+(* [at] is positional and NaN-blind: a NaN element is a value at that position,
+   not an absence. This is the asymmetry with [first_valid], which skips NaN.
+   Asserted with an explicit [Float.is_nan] rather than a tolerance comparator,
+   because a tolerance comparator passes NaN against NaN for the wrong reason. *)
+let series_at_returns_nan_as_some () =
+  let s =
+    Test_helpers.make_daily_series
+      [| "2024-01-01"; "2024-01-02"; "2024-01-03" |]
+      [| 1.0; Float.nan; Float.nan |]
+  in
+  (match Cairos.Series.at 1 s with
+  | None -> Alcotest.fail "at 1: expected Some for a NaN element"
+  | Some v -> Alcotest.(check bool) "at 1 is nan" true (Float.is_nan v));
+  match Cairos.Series.last s with
+  | None -> Alcotest.fail "last: expected Some for a trailing NaN"
+  | Some v -> Alcotest.(check bool) "last is nan" true (Float.is_nan v)
+
+let series_last_empty_is_none () =
+  let s = Test_helpers.make_daily_series [||] [||] in
+  Alcotest.(check int) "fixture length" 0 (Cairos.Series.length s);
+  Alcotest.(check bool) "is None" true (Option.is_none (Cairos.Series.last s))
+
 let tests =
   [
     ( "make_succeeds_with_matching_lengths",
@@ -600,6 +711,11 @@ let tests =
       first_valid_returns_none_all_nan );
     ("first_valid_returns_none_empty", `Quick, first_valid_returns_none_empty);
     ("first_valid_first_element", `Quick, first_valid_first_element);
+    ("series_at_in_range", `Quick, series_at_in_range);
+    ("series_at_out_of_range", `Quick, series_at_out_of_range);
+    ("series_at_returns_nan_as_some", `Quick, series_at_returns_nan_as_some);
+    ("series_at_higher_rank_is_none", `Quick, series_at_higher_rank_is_none);
+    ("series_last_empty_is_none", `Quick, series_last_empty_is_none);
     QCheck_alcotest.to_alcotest pct_change_preserves_length;
     QCheck_alcotest.to_alcotest pct_change_index_zero_is_nan;
     QCheck_alcotest.to_alcotest pct_change_value_semantics;

@@ -113,6 +113,18 @@
   cairos_bench_emit))
 
 (executable
+ (name bench_frame_columns)
+ (modules bench_frame_columns)
+ (libraries
+  cairos
+  nx
+  bechamel
+  bechamel-notty
+  notty.unix
+  unix
+  cairos_bench_emit))
+
+(executable
  (name bench_backtest)
  (modules bench_backtest)
  (libraries

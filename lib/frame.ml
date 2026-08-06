@@ -79,6 +79,73 @@ let of_series pairs_ne =
                 Nonempty.map (fun (n, s) -> (n, Series.values s)) pairs_ne;
             })
 
+(* [name] is tested for membership directly rather than rescanning the appended
+   list through [has_duplicate_names]. A frame's columns are duplicate-free by
+   construction — [of_series] rejects a repeat and no operation since
+   introduces one — so [name] is the only candidate a scan could report, and
+   the shared helper would pay a quadratic pass to reach that same one answer.
+   At the ~500-column boundary [frame.mli] documents, that pass was the whole
+   measured cost of the operation.
+
+   Checked before the index, matching [of_series]. The order is observable
+   only for a column that is both a repeat and index-incompatible, and the two
+   functions answering that input differently would be the surprise.
+
+   The append is written out rather than lifted into a [Nonempty] combinator:
+   it is the one append site in the library, well under the threshold at which
+   a shared helper earns its name. It is also built only on the accepting
+   branch, so neither rejection allocates it. *)
+let add_column name series frame =
+  let head = Nonempty.hd frame.columns in
+  let tail = Nonempty.tl frame.columns in
+  if List.mem_assoc name (head :: tail) then Error (Duplicate_column { name })
+  else
+    let s_index = Series.index series in
+    if indices_equal frame.index s_index then
+      Ok
+        {
+          index = frame.index;
+          columns = Nonempty.make head (tail @ [ (name, Series.values series) ]);
+        }
+    else
+      Error
+        (Index_mismatch
+           {
+             column = name;
+             expected_length = Index.length frame.index;
+             found_length = Index.length s_index;
+           })
+
+(* Both operations filter the frame's own column list. That is what makes the
+   survivors keep the frame's insertion order, and — for [select] — what makes
+   a name requested twice select one column: the request decides membership
+   and nothing else. Driving the output from the request list instead would
+   reorder the columns and duplicate a repeat.
+
+   [Nonempty.of_list] is where the zero-column result is turned back, and it is
+   the sole [None] of both. Sharing one helper is what makes that structural
+   rather than true by inspecting two bodies. The condition carries no payload
+   — there is nothing to report beyond "the result would have no columns" —
+   which is why neither needs an [err] variant. *)
+let filter_columns keep frame =
+  match
+    Nonempty.of_list (List.filter keep (Nonempty.to_list frame.columns))
+  with
+  | None -> None
+  | Some columns -> Some { index = frame.index; columns }
+
+let drop name frame =
+  filter_columns (fun (n, _) -> not (String.equal n name)) frame
+
+(* The request is hashed first so membership costs one lookup per column rather
+   than a scan of the whole request per column. The table also collapses a
+   repeated name, which is the behaviour [frame.mli] documents and which a
+   [List.exists] reached only incidentally. *)
+let select names frame =
+  let requested = Hashtbl.create (Nonempty.length names) in
+  List.iter (fun n -> Hashtbl.replace requested n ()) (Nonempty.to_list names);
+  filter_columns (fun (n, _) -> Hashtbl.mem requested n) frame
+
 let get name frame =
   match List.assoc_opt name (Nonempty.to_list frame.columns) with
   | None -> None

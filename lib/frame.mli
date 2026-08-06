@@ -9,25 +9,28 @@ type 'freq t
 
 (** {1 Errors}
 
-    {!of_series} returns a structured error so callers can pattern-match on the
-    failure mode and recover the offending column without scanning error
-    strings. *)
+    {!of_series} and {!add_column} return a structured error so callers can
+    pattern-match on the failure mode and recover the offending column without
+    scanning error strings. Both produce both variants, and no other function in
+    this module produces [err]. *)
 
 type err =
   | Duplicate_column of { name : string }
-      (** Two of the supplied pairs carried the column name [name]. The
-          positions are not carried: the scan reports the first repeat it
-          reaches and holds no column index. *)
+      (** The column name [name] was supplied twice: two of {!of_series}'s pairs
+          carried it, or it is the name {!add_column} was given for a column the
+          frame already has. The positions are not carried: the scan reports the
+          first repeat it reaches and holds no column index. *)
   | Index_mismatch of {
       column : string;
       expected_length : int;
       found_length : int;
     }
       (** The index of column [column] is not structurally identical to the
-          reference index, which is the first pair's. [expected_length] is the
-          reference index's length and [found_length] is [column]'s. Equal
-          lengths mean the two agree in length and differ in their timestamps or
-          the order of them. *)
+          reference index — the first pair's under {!of_series}, and the frame's
+          own {!index} under {!add_column}. [expected_length] is the reference
+          index's length and [found_length] is [column]'s. Equal lengths mean
+          the two agree in length and differ in their timestamps or the order of
+          them. *)
 
 val err_to_string : err -> string
 (** Render [err] as a human-readable one-line message. *)
@@ -78,6 +81,53 @@ val to_series :
     duplicate-name nor the index-mismatch error can arise from a frame's own
     columns. Each series pairs {!index} with the stored values, as {!get} does.
 *)
+
+(** {1 Column operations} *)
+
+val add_column :
+  string ->
+  ('freq, (float, Bigarray.float64_elt) Nx.t) Series.t ->
+  'freq t ->
+  ('freq t, err) result
+(** [add_column name series frame] returns [frame] extended with a column [name]
+    holding [series], appended in last position. Insertion order is extended,
+    never reordered: the existing columns keep their positions in {!columns} and
+    [name] follows them. The returned frame shares [frame]'s index.
+
+    Both failure modes are the existing {!err} variants, and both are reachable:
+    [Error (Duplicate_column _)] when [name] is already a column of [frame], and
+    [Error (Index_mismatch _)] when [series] has an index that is not
+    structurally identical to {!index} — a different length, or the same length
+    with differing timestamps. The duplicate name is checked first, as in
+    {!of_series}, so a column that is both a repeat and index-incompatible
+    reports the repeat.
+
+    Callers adding a column derived from an existing one use this rather than
+    round-tripping through {!to_series} and {!of_series}: [Nonempty.t] has no
+    append, so that round trip forces an unwrap of the [option] returned by
+    [Nonempty.of_list] on a list the caller knows is non-empty. *)
+
+val drop : string -> 'freq t -> 'freq t option
+(** [drop name frame] returns [frame] without the column [name]. The surviving
+    columns keep their relative order and their values, and the returned frame
+    shares [frame]'s index.
+
+    Dropping a name that is not a column of [frame] is a no-op returning an
+    equal frame, following {!get}'s stance that a missing column name is not an
+    error. [None] means exactly one thing: [name] is the frame's only column, so
+    the result would be a zero-column frame, which a [Frame.t] cannot be. *)
+
+val select : string Nonempty.t -> 'freq t -> 'freq t option
+(** [select names frame] returns [frame] restricted to the columns whose names
+    appear in [names]. Columns are returned in the frame's insertion order, not
+    the caller's request order, matching {!columns}; the returned frame shares
+    [frame]'s index.
+
+    Names absent from [frame] are skipped rather than rejected, and a name
+    repeated in [names] names one column. [None] means what it means for
+    {!drop}: no requested name is present, so the result would be a zero-column
+    frame. The empty request cannot arise — the [Nonempty.t] parameter rules it
+    out at compile time. *)
 
 val mapi_cells :
   f:(col:int -> name:string -> row:int -> float -> float) -> 'freq t -> 'freq t

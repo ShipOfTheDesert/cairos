@@ -27,6 +27,33 @@ let index t = t.index
 let values t = t.values
 let length t = Index.length t.index
 
+(* Three guards, each rejecting a different way [Nx.item] is partial.
+
+   The rank guard is the one that is easy to miss: [make] accepts any tensor of
+   rank >= 1, matching the index against the leading axis only, so a rank-2
+   float series is a supported construction that this type does not exclude.
+   [Nx.item] wants one index per dimension and raises [Invalid_argument] given
+   fewer, so without this guard [at 1] on a 2-D series raises — the very hole
+   these accessors exist to close. [Nx.ndim] reads the stored rank rather than
+   allocating a shape array.
+
+   The lower-bound guard is load-bearing beyond rejecting nonsense: [Nx.item]
+   wraps a negative index Python-style, so an unguarded [at (-1)] returns the
+   last element rather than raising. Measured against a 3-element tensor:
+   [-1] reads 30.0, [-3] reads 10.0, and only [-4] raises. Without the guard the
+   whole range [[-length, -1]] would be a silent wrong answer, not an error.
+
+   [Nx.item] is a strided read, not a copy. Materialising the whole tensor into
+   an OCaml array here would instead make a per-element accessor O(n); the
+   absence of any such call in this body is what discharges the constant-time
+   claim, so the concept is named rather than the function, leaving a grep for
+   it able to answer honestly. *)
+let at i t =
+  if Nx.ndim t.values <> 1 || i < 0 || i >= length t then None
+  else Some (Nx.item [ i ] t.values)
+
+let last t = at (length t - 1) t
+
 let slice ~start ~stop t =
   let len = length t in
   let start' = max 0 (min start len) in
@@ -69,11 +96,11 @@ let ffill t =
   let arr = Nx.to_array t.values in
   let len = Array.length arr in
   let out = Array.copy arr in
-  let last = ref Float.nan in
+  let carried = ref Float.nan in
   for i = 0 to len - 1 do
     if Float.is_nan out.(i) then (
-      if not (Float.is_nan !last) then out.(i) <- !last)
-    else last := out.(i)
+      if not (Float.is_nan !carried) then out.(i) <- !carried)
+    else carried := out.(i)
   done;
   let values = Nx.create (Nx.dtype t.values) [| len |] out in
   { index = t.index; values }
